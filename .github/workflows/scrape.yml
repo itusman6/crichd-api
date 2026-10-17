@@ -1,0 +1,46 @@
+name: CricHD Playlist
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Xvfb: headed browser on a headless runner
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npx playwright install chromium
+          npx playwright install-deps chromium
+
+      - name: Run scraper
+        env:
+          RESIDENTIAL_PROXY: ${{ secrets.RESIDENTIAL_PROXY_URL }}
+        run: |
+          xvfb-run -a node scrape.js > playlist.m3u
+          echo "Streams: $(grep -c '^#EXTINF' playlist.m3u || echo 0)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playlist
+          path: playlist.m3u
