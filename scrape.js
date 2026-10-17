@@ -2,7 +2,7 @@ import { chromium } from 'rebrowser-playwright';
 
 const PROXY = process.env.RESIDENTIAL_PROXY;
 if (!PROXY) {
-  console.error('CRITICAL ERROR: RESIDENTIAL_PROXY secret is missing in GitHub settings.');
+  console.error('CRITICAL ERROR: RESIDENTIAL_PROXY secret is missing.');
   process.exit(1);
 }
 
@@ -10,18 +10,19 @@ const BASE = 'https://crichd.mobile';
 const PLAYER = 'https://playsza.st';
 
 async function main() {
+  // Robust parsing for URLs like http://:password@host:port
   const proxyUrl = new URL(PROXY);
   const proxyConfig = {
     server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
-    username: proxyUrl.username,
-    password: proxyUrl.password
+    username: proxyUrl.username || undefined,
+    password: proxyUrl.password || undefined
   };
 
-  console.error('Starting browser...'); // Log to stderr
+  console.error('Starting browser...');
   let browser;
   try {
     browser = await chromium.launch({
-      headless: false,
+      headless: false, // MUST be false to bypass Cloudflare
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -70,7 +71,9 @@ async function main() {
 
   const results = [];
 
-  for (const ch of channels.slice(0, 5)) { // Test with 5 channels
+  // Scrape 5 channels to save IPLoop proxy bandwidth. 
+  // Change to channels.length if you want all of them.
+  for (const ch of channels.slice(0, 5)) { 
     console.error(`# Processing: ${ch.name}`);
     try {
       await page.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -88,6 +91,7 @@ async function main() {
       const playerUrl = `${PLAYER}/player.php?id=${playerId}`;
       await page.goto(playerUrl, { waitUntil: 'networkidle', timeout: 60000 });
 
+      // Wait for Cloudflare challenge to clear
       await page.waitForFunction(() => {
         const text = document.body?.innerText || '';
         return !text.includes('Just a moment') && !text.includes('Checking your browser');
@@ -114,6 +118,7 @@ async function main() {
     await page.waitForTimeout(5000);
   }
 
+  // Output final M3U playlist
   console.log('#EXTM3U');
   console.log(`# Generated: ${new Date().toISOString()}`);
   for (const r of results) {
