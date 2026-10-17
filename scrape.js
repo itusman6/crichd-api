@@ -10,30 +10,19 @@ const BASE = 'https://crichd.mobile';
 const PLAYER = 'https://playsza.st';
 
 async function main() {
-  // Parse the proxy URL safely
   const proxyUrl = new URL(PROXY);
   
-  // IPLoop uses a blank username (e.g., http://:password@host:port).
-  // Playwright requires a username, so if it's blank, we use the token as the username.
-  let proxyUsername = proxyUrl.username;
-  let proxyPassword = proxyUrl.password;
-  
-  if (!proxyUsername && proxyPassword) {
-    proxyUsername = proxyPassword;
-    proxyPassword = ''; 
-  }
-
   const proxyConfig = {
     server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
-    username: proxyUsername || undefined,
-    password: proxyPassword || undefined
+    username: proxyUrl.username,
+    password: proxyUrl.password
   };
 
   console.error('Starting browser...');
   let browser;
   try {
     browser = await chromium.launch({
-      headless: false, // MUST be false to bypass Cloudflare (Xvfb handles the display)
+      headless: false,
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -45,7 +34,6 @@ async function main() {
     process.exit(1);
   }
 
-  console.error('Browser launched. Creating context...');
   const context = await browser.newContext({
     proxy: proxyConfig,
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36',
@@ -82,8 +70,6 @@ async function main() {
 
   const results = [];
 
-  // Scrape 5 channels to save IPLoop proxy bandwidth. 
-  // Change `channels.slice(0, 5)` to `channels` if you want to scrape all of them.
   for (const ch of channels.slice(0, 5)) { 
     console.error(`# Processing: ${ch.name}`);
     try {
@@ -102,7 +88,6 @@ async function main() {
       const playerUrl = `${PLAYER}/player.php?id=${playerId}`;
       await page.goto(playerUrl, { waitUntil: 'networkidle', timeout: 60000 });
 
-      // Wait for Cloudflare challenge to clear
       await page.waitForFunction(() => {
         const text = document.body?.innerText || '';
         return !text.includes('Just a moment') && !text.includes('Checking your browser');
@@ -129,7 +114,6 @@ async function main() {
     await page.waitForTimeout(5000);
   }
 
-  // Output final M3U playlist
   console.log('#EXTM3U');
   console.log(`# Generated: ${new Date().toISOString()}`);
   for (const r of results) {
