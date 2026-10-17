@@ -2,7 +2,7 @@ import { chromium } from 'rebrowser-playwright';
 
 const PROXY = process.env.RESIDENTIAL_PROXY;
 if (!PROXY) {
-  console.error('RESIDENTIAL_PROXY secret is required.');
+  console.error('CRITICAL ERROR: RESIDENTIAL_PROXY secret is missing in GitHub settings.');
   process.exit(1);
 }
 
@@ -17,15 +17,23 @@ async function main() {
     password: proxyUrl.password
   };
 
-  const browser = await chromium.launch({
-    headless: false, // Required for Cloudflare
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-dev-shm-usage'
-    ]
-  });
+  console.error('Starting browser...'); // Log to stderr
+  let browser;
+  try {
+    browser = await chromium.launch({
+      headless: false,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-dev-shm-usage'
+      ]
+    });
+  } catch (err) {
+    console.error('Failed to launch browser:', err.message);
+    process.exit(1);
+  }
 
+  console.error('Browser launched. Creating context...');
   const context = await browser.newContext({
     proxy: proxyConfig,
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36',
@@ -36,8 +44,15 @@ async function main() {
 
   const page = await context.newPage();
 
-  console.log('# Fetching homepage...');
-  await page.goto(BASE, { waitUntil: 'networkidle', timeout: 60000 });
+  console.error('# Fetching homepage...');
+  try {
+    await page.goto(BASE, { waitUntil: 'networkidle', timeout: 60000 });
+  } catch (err) {
+    console.error('Failed to load homepage (Proxy might be dead):', err.message);
+    await browser.close();
+    process.exit(1);
+  }
+  
   await page.waitForTimeout(3000);
 
   const channels = await page.evaluate(() => {
@@ -51,12 +66,12 @@ async function main() {
     return links;
   });
 
-  console.log(`# Found ${channels.length} channels`);
+  console.error(`# Found ${channels.length} channels`);
 
   const results = [];
 
-  for (const ch of channels.slice(0, 5)) { // Start with 5 to test
-    console.log(`# Processing: ${ch.name}`);
+  for (const ch of channels.slice(0, 5)) { // Test with 5 channels
+    console.error(`# Processing: ${ch.name}`);
     try {
       await page.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(2000);
@@ -68,7 +83,7 @@ async function main() {
         return m ? m[1] : null;
       });
 
-      if (!playerId) { console.log(`# No player for ${ch.name}`); continue; }
+      if (!playerId) { console.error(`# No player for ${ch.name}`); continue; }
 
       const playerUrl = `${PLAYER}/player.php?id=${playerId}`;
       await page.goto(playerUrl, { waitUntil: 'networkidle', timeout: 60000 });
@@ -80,7 +95,7 @@ async function main() {
 
       const playerHtml = await page.content();
       const fidMatch = playerHtml.match(/fid\s*=\s*["']([^"']+)["']/);
-      if (!fidMatch) { console.log(`# No fid for ${ch.name}`); continue; }
+      if (!fidMatch) { console.error(`# No fid for ${ch.name} (CF Blocked?)`); continue; }
       const fid = fidMatch[1];
 
       const uembedUrl = `${PLAYER}/uembed.php?v=${fid}`;
@@ -88,13 +103,13 @@ async function main() {
 
       const uembedHtml = await page.content();
       const m3u8Match = uembedHtml.match(/https?:\/\/[^"'\s<>]+\.m3u8(?:\?[^"'\s<>]*)?/i);
-      if (!m3u8Match) { console.log(`# No m3u8 for ${ch.name}`); continue; }
+      if (!m3u8Match) { console.error(`# No m3u8 for ${ch.name}`); continue; }
 
       results.push({ name: ch.name, m3u8: m3u8Match[0], fid });
-      console.log(`# OK: ${ch.name}`);
+      console.error(`# OK: ${ch.name}`);
 
     } catch (err) {
-      console.log(`# Error ${ch.name}: ${err.message}`);
+      console.error(`# Error ${ch.name}: ${err.message}`);
     }
     await page.waitForTimeout(5000);
   }
