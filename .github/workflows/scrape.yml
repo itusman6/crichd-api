@@ -22,24 +22,16 @@ jobs:
         with:
           node-version: 22
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
       - name: Install dependencies
         run: |
-          npm ci
+          # CHANGED FROM npm ci TO npm install
+          npm install
           npx playwright install --with-deps chromium
 
       - name: Run scraper
         env:
           RESIDENTIAL_PROXY: ${{ secrets.RESIDENTIAL_PROXY_URL }}
         run: |
-          # The correct xvfb-run syntax is crucial. 
-          # --auto-servernum finds a free display automatically.
-          # --server-args sets the screen size.
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
             node scrape.js > playlist.m3u
           
