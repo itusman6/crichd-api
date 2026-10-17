@@ -25,15 +25,11 @@ jobs:
       - name: Install dependencies
         run: |
           npm install
-          # Install Playwright dependencies and FULL Chromium (not just headless shell)
           npx playwright install --with-deps chromium
           npx playwright install chromium
 
       - name: Run scraper
-        env:
-          RESIDENTIAL_PROXY: ${{ secrets.RESIDENTIAL_PROXY_URL }}
         run: |
-          # 2>&1 captures errors. We pipe to playlist.m3u.
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
             node scrape.js > playlist.m3u 2>&1 || (cat playlist.m3u && exit 1)
           
@@ -42,7 +38,7 @@ jobs:
           echo "------------------------"
           
           if grep -q "Error:" playlist.m3u; then
-            echo "Scraper failed. Check error output above."
+            echo "Scraper failed."
             exit 1
           fi
 
