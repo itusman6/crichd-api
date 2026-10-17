@@ -24,20 +24,25 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # CHANGED FROM npm ci TO npm install
           npm install
+          # Force download of the FULL Chromium browser, not just the headless shell
           npx playwright install --with-deps chromium
+          npx playwright install chromium
 
       - name: Run scraper
         env:
           RESIDENTIAL_PROXY: ${{ secrets.RESIDENTIAL_PROXY_URL }}
         run: |
+          # 2>&1 redirects stderr to stdout so we see errors in the log
+          # if it fails, the pipeline fails, but we get the output
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
-            node scrape.js > playlist.m3u
+            node scrape.js > playlist.m3u 2>&1 || (cat playlist.m3u && exit 1)
           
-          echo "Streams: $(grep -c '^#EXTINF' playlist.m3u || echo 0)"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: playlist
-          path: playlist.m3u
+          echo "--- Playlist Preview ---"
+          head -n 10 playlist.m3u
+          echo "------------------------"
+          
+          if grep -q "Error:" playlist.m3u; then
+            echo "Scraper failed. Check error output above."
+            exit 1
+          fi
