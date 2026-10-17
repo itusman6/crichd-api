@@ -10,19 +10,30 @@ const BASE = 'https://crichd.mobile';
 const PLAYER = 'https://playsza.st';
 
 async function main() {
-  // Robust parsing for URLs like http://:password@host:port
+  // Parse the proxy URL safely
   const proxyUrl = new URL(PROXY);
+  
+  // IPLoop uses a blank username (e.g., http://:password@host:port).
+  // Playwright requires a username, so if it's blank, we use the token as the username.
+  let proxyUsername = proxyUrl.username;
+  let proxyPassword = proxyUrl.password;
+  
+  if (!proxyUsername && proxyPassword) {
+    proxyUsername = proxyPassword;
+    proxyPassword = ''; 
+  }
+
   const proxyConfig = {
     server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
-    username: proxyUrl.username || undefined,
-    password: proxyUrl.password || undefined
+    username: proxyUsername || undefined,
+    password: proxyPassword || undefined
   };
 
   console.error('Starting browser...');
   let browser;
   try {
     browser = await chromium.launch({
-      headless: false, // MUST be false to bypass Cloudflare
+      headless: false, // MUST be false to bypass Cloudflare (Xvfb handles the display)
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -72,7 +83,7 @@ async function main() {
   const results = [];
 
   // Scrape 5 channels to save IPLoop proxy bandwidth. 
-  // Change to channels.length if you want all of them.
+  // Change `channels.slice(0, 5)` to `channels` if you want to scrape all of them.
   for (const ch of channels.slice(0, 5)) { 
     console.error(`# Processing: ${ch.name}`);
     try {
