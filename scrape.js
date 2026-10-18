@@ -1,179 +1,57 @@
-import { chromium } from 'rebrowser-playwright';
-import * as cheerio from 'cheerio';
-import fs from 'fs';
+name: CricHD Playlist and Schedules
 
-const BASE = 'https://crichd.mobile';
-const PLAYER = 'https://playsza.st';
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 
-async function main() {
-  const PROXY = process.env.RESIDENTIAL_PROXY;
-  
-  const launchOptions = {
-    headless: false,
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--ignore-certificate-errors',
-      '--window-size=1920,1080'
-    ],
-    viewport: { width: 1920, height: 1080 },
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-  };
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
 
-  // CORRECT PROXY CONFIG: Use Playwright's proxy option with separate fields
-  if (PROXY) {
-    console.error('[Proxy Configured] Parsing credentials...');
-    const proxyUrl = new URL(PROXY);
-    
-    // IPLoop format: http://iploop:API_KEY@proxy.iploop.io:8880
-    // Username must be 'iploop', password is the API key
-    launchOptions.proxy = {
-      server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
-      username: proxyUrl.username || 'iploop',
-      password: proxyUrl.password
-    };
-    
-    console.error(`[Proxy Configured] Server: ${launchOptions.proxy.server}, User: ${launchOptions.proxy.username}`);
-  }
+    steps:
+      - uses: actions/checkout@v4
 
-  console.error('Launching browser...');
-  const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
-  const page = await browser.pages()[0] || await browser.newPage();
+      - name: Install Xvfb, Chrome, and Windscribe VPN
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb google-chrome-stable wget
+          # Download Windscribe CLI
+          wget -O windscribe-cli.deb https://windscribe.com/install/linux/deb_amd64
+          sudo dpkg -i windscribe-cli.deb || sudo apt-get install -f -y
+          # Login to Windscribe using a free account (You need to create a free account)
+          # Replace 'YOUR_USERNAME' and 'YOUR_PASSWORD' with your Windscribe free account details
+          windscribe login
+          windscribe connect
+          curl -s https://httpbin.org/ip
 
-  await page.route('**/*', route => {
-    const type = route.request().resourceType();
-    if (['image', 'media', 'font'].includes(type)) {
-      if (!route.request().url().includes('/assets/channels/')) {
-        route.abort();
-      } else {
-        route.continue();
-      }
-    } else {
-      route.continue();
-    }
-  });
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-  console.error('Fetching CricHD homepage...');
-  try {
-    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 90000 });
-    await page.waitForTimeout(5000); 
-  } catch (err) {
-    console.error('Failed to load homepage:', err.message);
-    await browser.close();
-    process.exit(1);
-  }
+      - name: Install dependencies
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+          npx playwright install chromium
 
-  const homeHtml = await page.content();
-  const $ = cheerio.load(homeHtml);
-  const channels = [];
-  const schedules = [];
+      - name: Run scraper
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            node scrape.js
+            
+          echo "--- Playlist Preview ---"
+          head -n 10 playlist.m3u || true
 
-  $('table').find('tr').each((_, el) => {
-    const $row = $(el);
-    const league = $row.find('td').eq(1).text().trim();
-    const title = $row.find('td').eq(2).text().trim();
-    const time = $row.find('td').eq(3).text().trim().replace(/\s+/g, ' ');
-    if (title && league && time) schedules.push({ league, title, time });
-  });
+      - name: Upload Playlist Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crichd-playlist
+          path: playlist.m3u
 
-  $('a[href*="/channels/"]').each((_, el) => {
-    const href = $(el).attr('href');
-    const img = $(el).find('img[title], img[alt]');
-    const titleAttr = $(el).attr('title') || img.attr('title') || img.attr('alt');
-    
-    if (href && titleAttr) {
-      const name = titleAttr.replace(/\s+Live Streaming.*$/i, '').trim();
-      const fullUrl = href.startsWith('http') ? href : `${BASE}${href}`;
-      let rawImgSrc = img.attr('src') || '';
-      const logoUrl = rawImgSrc ? (rawImgSrc.startsWith('http') ? rawImgSrc : `${BASE}${rawImgSrc}`) : '';
-
-      if (!channels.some(c => c.url === fullUrl)) {
-        channels.push({ name, url: fullUrl, logo: logoUrl });
-      }
-    }
-  });
-
-  console.error(`Found ${channels.length} channels and ${schedules.length} schedule entries.`);
-  
-  const results = [];
-
-  for (const ch of channels) {
-    let capturedM3u8 = null;
-    const p = await browser.newPage();
-
-    p.on('request', request => {
-      if (request.url().includes('.m3u8')) capturedM3u8 = request.url();
-    });
-
-    try {
-      console.error(`Processing: ${ch.name}`);
-      await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      await p.waitForTimeout(1500);
-
-      const channelHtml = await p.content();
-      let playerUrl = '';
-      
-      if (channelHtml.includes('uembed.php?v=')) {
-        const match = channelHtml.match(/uembed\.php\?v=([A-Za-z0-9_-]+)/);
-        if (match) playerUrl = `${PLAYER}/uembed.php?v=${match[1]}`;
-      } else if (channelHtml.includes('player.php?id=')) {
-        const match = channelHtml.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
-        if (match) {
-          const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
-          await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-          await p.waitForTimeout(3000);
-          const pHtml = await p.content();
-          const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
-          if (fMatch) playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
-        }
-      }
-
-      if (playerUrl) {
-        await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      }
-
-      for (let i = 0; i < 10; i++) {
-        if (capturedM3u8) break;
-        await p.waitForTimeout(1000);
-      }
-
-      await p.close();
-
-      if (capturedM3u8) {
-        console.error(`   [OK] Captured stream for ${ch.name}`);
-        results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
-      } else {
-        console.error(`   [Error] Failed to intercept .m3u8 for ${ch.name}`);
-      }
-    } catch (err) {
-      await p.close();
-      console.error(`   [Error] ${ch.name}: ${err.message}`);
-    }
-  }
-
-  await browser.close();
-
-  let playlistContent = '#EXTM3U\n';
-  playlistContent += `# Generated: ${new Date().toISOString()}\n`;
-
-  for (const r of results) {
-    playlistContent += `#EXTINF:-1 tvg-logo="${r.logo}" group-title="Sports", ${r.name}\n`;
-    playlistContent += `#EXTVLCOPT:http-origin=https://bhalocast.com\n`;
-    playlistContent += `#EXTVLCOPT:http-referrer=https://bhalocast.com/\n`;
-    playlistContent += `#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\n`;
-    playlistContent += `${r.m3u8}\n`;
-  }
-
-  fs.writeFileSync('playlist.m3u', playlistContent, 'utf8');
-  fs.writeFileSync('schedule.json', JSON.stringify(schedules, null, 2), 'utf8');
-  
-  console.error(`\nFinished! Generated playlist.m3u with ${results.length} streams.`);
-}
-
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+      - name: Upload Schedule Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crichd-schedule
+          path: schedule.json
