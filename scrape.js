@@ -16,32 +16,6 @@ async function main() {
   const $ = cheerio.load(homeHtml);
   
   const channels = [];
-  const schedules = [];
-
-  // Schedules Extract
-  $('table').find('tr').each((_, el) => {
-    const $row = $(el);
-    const cells = $row.find('td').map((_, td) => $(td).text().trim().replace(/\s+/g, ' ')).get();
-    if (cells.length < 4) return;
-
-    const league = cells[1];
-    const title = cells[2];
-
-    // Find the first cell that looks like a time (contains "Today", "Tomorrow", a date, or HH:MM)
-    let time = '';
-    for (let i = 3; i < cells.length; i++) {
-      const c = cells[i].replace(/^\d+/, '').trim();
-      if (/today|tomorrow|\d{1,2}:\d{2}|\d{2}-\d{2}-\d{4}/i.test(c)) {
-        time = c;
-        break;
-      }
-    }
-
-    if (!title || !league || !time) return;
-    if (/^(league|title|time|match)$/i.test(league)) return;
-
-    schedules.push({ league, title, time });
-  });
 
   // Channels Extract
   $('a[href*="/channels/"]').each((_, el) => {
@@ -59,7 +33,7 @@ async function main() {
   });
   
   await browser1.close();
-  console.error(`Found ${channels.length} channels and ${schedules.length} schedules.`);
+  console.error(`Found ${channels.length} channels.`);
 
   const browser2 = await chromium.launch({ headless: true });
   const page2 = await browser2.newPage();
@@ -169,15 +143,8 @@ async function main() {
     playlistContent += `${r.m3u8}\n\n`;
   }
 
-  // 2. Schedules Group (All schedules in a single group)
-  for (const s of schedules) {
-    playlistContent += `#EXTINF:-1 group-title="Schedules", ${s.title} (${s.league} - ${s.time})\n`;
-    // Since schedule doesn't have a direct stream, we link to the channel page as a fallback
-    playlistContent += `${BASE}/\n\n`;
-  }
-
   fs.writeFileSync('playlist.m3u', playlistContent, 'utf8');
-  console.error(`\nDone! Generated playlist.m3u with ${results.length} streams and ${schedules.length} schedules.`);
+  console.error(`\nDone! Generated playlist.m3u with ${results.length} streams.`);
 }
 
 main();
