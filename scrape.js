@@ -103,8 +103,8 @@ async function main() {
       console.error(`   -> Opening: ${ch.playerUrl}`);
       await p.goto(ch.playerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       
-      console.error(`   -> Waiting 5s for Turnstile solver...`);
-      await p.waitForTimeout(5000);
+      console.error(`   -> Waiting 10s for Turnstile solver...`);
+      await p.waitForTimeout(10000);
 
       let targetUrl = ch.playerUrl;
 
