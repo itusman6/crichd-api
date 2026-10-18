@@ -8,7 +8,8 @@ const PLAYER = 'https://playsza.st';
 async function main() {
   const PROXY = process.env.RESIDENTIAL_PROXY;
   
-  const launchOptions = {
+  console.error('Launching browser...');
+  const browser = await chromium.launch({
     headless: false, // Required for Xvfb in GitHub Actions
     args: [
       '--disable-blink-features=AutomationControlled',
@@ -18,29 +19,31 @@ async function main() {
       '--disable-gpu',
       '--ignore-certificate-errors',
       '--window-size=1920,1080'
-    ],
+    ]
+  });
+
+  const contextOptions = {
     viewport: { width: 1920, height: 1080 },
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   };
 
-  let pUser = '';
-  let pPass = '';
-
-  // PROXY FIX: Pass server only, authenticate via Playwright method to prevent ERR_PROXY_AUTH_UNSUPPORTED
+  // NATIVE CONTEXT PROXY CONFIGURATION (Supports authentication properly)
   if (PROXY) {
     console.error('[Proxy Configured] Parsing credentials...');
     try {
       const proxyUrl = new URL(PROXY);
-      pUser = proxyUrl.username;
-      pPass = proxyUrl.password;
+      let pUser = proxyUrl.username;
+      let pPass = proxyUrl.password;
 
       if (!pUser && pPass) {
         pUser = pPass;
         pPass = '';
       }
 
-      launchOptions.proxy = {
-        server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`
+      contextOptions.proxy = {
+        server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
+        username: decodeURIComponent(pUser),
+        password: decodeURIComponent(pPass)
       };
       
       console.error(`[Proxy Configured] Routing via: ${proxyUrl.hostname}:${proxyUrl.port}`);
@@ -49,18 +52,8 @@ async function main() {
     }
   }
 
-  console.error('Launching persistent browser session...');
-  const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
-
-  // Authenticate proxy securely using Playwright's built-in method
-  if (PROXY && pUser) {
-    await browser.authenticate({
-      username: decodeURIComponent(pUser),
-      password: decodeURIComponent(pPass)
-    });
-  }
-
-  const page = await browser.pages()[0] || await browser.newPage();
+  const context = await browser.newContext(contextOptions);
+  const page = await context.newPage();
 
   // Route optimization: block heavy media/fonts
   await page.route('**/*', route => {
@@ -120,7 +113,7 @@ async function main() {
 
   for (const ch of channels) {
     let capturedM3u8 = null;
-    const p = await browser.newPage();
+    const p = await context.newPage();
 
     p.on('request', request => {
       const reqUrl = request.url();
