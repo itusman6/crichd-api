@@ -6,30 +6,26 @@ const BASE = 'https://crichd.mobile';
 const PLAYER = 'https://playsza.st';
 
 async function main() {
-  console.log('Launching headless stealth browser for production...');
+  console.log('Launching robust browser context...');
   
-  const browser = await chromium.launch({
-    headless: true,
+  // Launch persistent context so Cloudflare tokens are cached across pages
+  const browser = await chromium.launchPersistentContext('./ci-chrome-session', {
+    headless: true, // Set to false if debugging locally
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--window-size=1280,720'
-    ]
-  });
-
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      '--disable-gpu'
+    ],
     viewport: { width: 1280, height: 720 }
   });
 
-  const page = await context.newPage();
+  const page = await browser.pages()[0] || await browser.newPage();
   console.log('Fetching CricHD homepage...');
   
   try {
     await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(4000); // Allow Cloudflare JS challenge to resolve in headless mode
+    await page.waitForTimeout(4000); // Allow clearance cookie to settle
   } catch (err) {
     console.error('Failed to load homepage:', err.message);
     await browser.close();
@@ -55,13 +51,14 @@ async function main() {
     }
   });
 
-  console.log(`Found ${channels.length} channels. Extracting streams...\n`);
+  console.log(`Found ${channels.length} channels. Capturing .m3u8 links via DevTools network tracking...\n`);
   const results = [];
 
   for (const ch of channels) {
-    const p = await context.newPage();
+    const p = await browser.newPage();
     let capturedM3u8 = null;
 
+    // Listen to network requests just like browser DevTools
     p.on('request', request => {
       const url = request.url();
       if (url.includes('.m3u8')) {
@@ -72,7 +69,7 @@ async function main() {
     try {
       console.log(`Processing: ${ch.name}`);
       await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await p.waitForTimeout(2000);
+      await p.waitForTimeout(1500);
 
       const channelHtml = await p.content();
       let playerUrl = '';
@@ -85,7 +82,7 @@ async function main() {
         if (match) {
           const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
           await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          await p.waitForTimeout(3000);
+          await p.waitForTimeout(2000);
           const pHtml = await p.content();
           const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
           if (fMatch) {
@@ -109,7 +106,7 @@ async function main() {
         await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       }
 
-      // Wait up to 15 seconds for the player to initialize and trigger the .m3u8 request
+      // Wait up to 15 seconds for the stream manifest request to fire
       for (let i = 0; i < 15; i++) {
         if (capturedM3u8) break;
         await p.waitForTimeout(1000);
@@ -131,7 +128,7 @@ async function main() {
 
   await browser.close();
 
-  // Generate M3U playlist file content
+  // Generate M3U playlist file content in your exact format
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n`;
 
