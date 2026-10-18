@@ -23,13 +23,16 @@ async function main() {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   };
 
-  // NATIVE PLAYWRIGHT PERSISTENT PROXY OBJECT (Resolves ERR_PROXY_AUTH_UNSUPPORTED)
+  let pUser = '';
+  let pPass = '';
+
+  // PROXY FIX: Pass server only, authenticate via Playwright method to prevent ERR_PROXY_AUTH_UNSUPPORTED
   if (PROXY) {
-    console.error('[Proxy Configured] Parsing credentials for persistent context...');
+    console.error('[Proxy Configured] Parsing credentials...');
     try {
       const proxyUrl = new URL(PROXY);
-      let pUser = proxyUrl.username;
-      let pPass = proxyUrl.password;
+      pUser = proxyUrl.username;
+      pPass = proxyUrl.password;
 
       if (!pUser && pPass) {
         pUser = pPass;
@@ -37,9 +40,7 @@ async function main() {
       }
 
       launchOptions.proxy = {
-        server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
-        username: decodeURIComponent(pUser),
-        password: decodeURIComponent(pPass)
+        server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`
       };
       
       console.error(`[Proxy Configured] Routing via: ${proxyUrl.hostname}:${proxyUrl.port}`);
@@ -50,6 +51,15 @@ async function main() {
 
   console.error('Launching persistent browser session...');
   const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
+
+  // Authenticate proxy securely using Playwright's built-in method
+  if (PROXY && pUser) {
+    await browser.authenticate({
+      username: decodeURIComponent(pUser),
+      password: decodeURIComponent(pPass)
+    });
+  }
+
   const page = await browser.pages()[0] || await browser.newPage();
 
   // Route optimization: block heavy media/fonts
