@@ -8,7 +8,8 @@ const PLAYER = 'https://playsza.st';
 async function main() {
   const PROXY = process.env.RESIDENTIAL_PROXY;
   
-  const launchOptions = {
+  console.error('Launching browser...');
+  const browser = await chromium.launch({
     headless: false, // Required when running with Xvfb in GitHub Actions
     args: [
       '--disable-blink-features=AutomationControlled',
@@ -18,14 +19,17 @@ async function main() {
       '--disable-gpu',
       '--ignore-certificate-errors',
       '--window-size=1920,1080'
-    ],
+    ]
+  });
+
+  const contextOptions = {
     viewport: { width: 1920, height: 1080 },
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   };
 
-  // NATIVE PLAYWRIGHT PROXY CONFIGURATION
+  // NATIVE PLAYWRIGHT CONTEXT PROXY CONFIGURATION
   if (PROXY) {
-    console.error('[Proxy Configured] Parsing credentials for Playwright proxy object...');
+    console.error('[Proxy Configured] Parsing credentials for context proxy...');
     try {
       const proxyUrl = new URL(PROXY);
       let pUser = proxyUrl.username;
@@ -36,7 +40,7 @@ async function main() {
         pPass = '';
       }
 
-      launchOptions.proxy = {
+      contextOptions.proxy = {
         server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
         username: decodeURIComponent(pUser),
         password: decodeURIComponent(pPass)
@@ -48,9 +52,8 @@ async function main() {
     }
   }
 
-  console.error('Launching browser...');
-  const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
-  const page = await browser.pages()[0] || await browser.newPage();
+  const context = await browser.newContext(contextOptions);
+  const page = await context.newPage();
 
   // Safely route resources (only block heavy static media/fonts)
   await page.route('**/*', route => {
@@ -110,7 +113,7 @@ async function main() {
 
   for (const ch of channels) {
     let capturedM3u8 = null;
-    const p = await browser.newPage();
+    const p = await context.newPage();
 
     p.on('request', request => {
       const reqUrl = request.url();
