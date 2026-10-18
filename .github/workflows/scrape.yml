@@ -1,4 +1,4 @@
-name: CricHD Playlist
+name: CricHD Playlist (Edge + rektCaptcha)
 
 on:
   schedule:
@@ -13,21 +13,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Xvfb and Chrome
+      - name: Install Xvfb and Microsoft Edge
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb google-chrome-stable unzip wget
+          sudo apt-get install -y xvfb unzip wget
+          
+          # Download Microsoft Edge Stable .deb
+          wget -q https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-stable/microsoft-edge-stable_130.0.2849.46-1_amd64.deb || \
+          wget -q https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-stable/microsoft-edge-stable_129.0.2792.89-1_amd64.deb
+          
+          sudo dpkg -i microsoft-edge-stable*.deb || sudo apt-get install -f -y
+          
+          # Verify Edge installation
+          microsoft-edge --version
 
-      - name: Download NullFlare Turnstile Solver
+      - name: Download rektCaptcha Extension
         run: |
-          # NullFlare Extension ID: dfmkjkikfljendhmfnlflfbfjabdbhbk
-          wget -O nullflare.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=130.0&acceptformat=crx2,crx3&x=id%3Ddfmkjkikfljendhmfnlflfbfjabdbhbk%26uc"
-          unzip -o nullflare.crx -d nullflare-solver || true
-          if [ ! -f "nullflare-solver/manifest.json" ]; then
-            echo "ERROR: NullFlare extraction failed."
+          # CRX Download URL for rektCaptcha (ID: bbdhfoclddncoaomddgkaaphcnddbpdh)
+          wget -O rektcaptcha.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=130.0&acceptformat=crx2,crx3&x=id%3Dbbdhfoclddncoaomddgkaaphcnddbpdh%26uc"
+          unzip -o rektcaptcha.crx -d rektcaptcha || true
+          
+          if [ ! -f "rektcaptcha/manifest.json" ]; then
+            echo "ERROR: rektCaptcha extraction failed."
             exit 1
           fi
-          echo "NullFlare extracted."
+          echo "rektCaptcha extracted successfully."
 
       - uses: actions/setup-node@v4
         with:
@@ -37,7 +47,7 @@ jobs:
         run: |
           npm install
           npx playwright install --with-deps chromium
-          npx playwright install chromium
+          # We don't install msedge via playwright since we installed it manually above
 
       - name: Run scraper
         run: |
