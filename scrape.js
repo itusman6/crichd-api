@@ -8,7 +8,7 @@ const PLAYER = 'https://playsza.st';
 async function main() {
   console.error('Launching persistent browser session...');
   
-  const browser = await chromium.launchPersistentContext('./chrome-session', {
+  const launchOptions = {
     headless: false,
     channel: 'chrome', 
     args: [
@@ -17,8 +17,23 @@ async function main() {
       '--disable-dev-shm-usage'
     ],
     viewport: { width: 1280, height: 720 }
-  });
+  };
 
+  // PROXY SETUP
+  const PROXY = process.env.RESIDENTIAL_PROXY;
+  if (PROXY) {
+    console.error('Proxy detected. Configuring...');
+    const proxyUrl = new URL(PROXY);
+    
+    launchOptions.proxy = {
+      server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
+      username: proxyUrl.username || 'iploop',
+      password: proxyUrl.password
+    };
+    console.error(`Routing via: ${launchOptions.proxy.server}`);
+  }
+
+  const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
   const page = await browser.pages()[0] || await browser.newPage();
   console.error('Fetching CricHD homepage...');
   
@@ -145,7 +160,6 @@ async function main() {
 
   await browser.close();
 
-  // Generate M3U playlist file content using source assets
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n`;
 
