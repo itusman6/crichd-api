@@ -7,9 +7,9 @@ const BASE = 'https://crichd.mobile';
 const PLAYER = 'https://playsza.st';
 
 async function main() {
-  console.error('=== PHASE 1: FETCHING CHANNELS AND PLAYER URLS ===');
+  console.error('=== PHASE 1: FETCHING CHANNELS ===');
   
-  // Phase 1: Just use a lightweight HTTP request to get the channel list
+  // Phase 1: Get channel list (headless, fast)
   const browser1 = await chromium.launch({ headless: true });
   const context1 = await browser1.newContext();
   const page1 = await context1.newPage();
@@ -30,7 +30,7 @@ async function main() {
     if (title && league && time) schedules.push({ league, title, time });
   });
 
-  // Channels & Player URLs
+  // Channels
   $('a[href*="/channels/"]').each((_, el) => {
     const href = $(el).attr('href');
     const img = $(el).find('img[title]');
@@ -39,7 +39,6 @@ async function main() {
       const fullUrl = href.startsWith('http') ? href : `${BASE}${href}`;
       let rawImgSrc = img.attr('src') || '';
       const logoUrl = rawImgSrc.startsWith('http') ? rawImgSrc : `${BASE}${rawImgSrc}`;
-      
       if (!channels.some(c => c.name === name)) {
         channels.push({ name, channelUrl: fullUrl, logo: logoUrl });
       }
@@ -47,9 +46,9 @@ async function main() {
   });
   
   await browser1.close();
-  console.error(`Found ${channels.length} channels. Extracting direct player URLs...`);
+  console.error(`Found ${channels.length} channels.`);
 
-  // Extract Player URLs from each channel page
+  // Extract Player URLs
   const browser2 = await chromium.launch({ headless: true });
   const context2 = await browser2.newContext();
   const page2 = await context2.newPage();
@@ -71,27 +70,25 @@ async function main() {
       
       if (playerUrl) {
         validChannels.push({ ...ch, playerUrl });
-        console.log(`   [+] Found Player URL for ${ch.name}`);
-      } else {
-        console.log(`   [-] No Player URL for ${ch.name}`);
+        console.log(`   [+] ${ch.name}`);
       }
     } catch (e) {
-      console.log(`   [!] Error on ${ch.name}: ${e.message}`);
+      console.log(`   [!] Error on ${ch.name}`);
     }
   }
   await browser2.close();
 
-  console.error(`\n=== PHASE 2: OPENING FRESH SESSIONS FOR EACH PLAYER URL ===`);
+  console.error(`\n=== PHASE 2: OPENING FRESH SESSIONS ===`);
   
   const results = [];
-  const extensionPath = path.resolve('./turnstile-solver');
+  // Path to NullFlare extension (downloaded in workflow)
+  const extensionPath = path.resolve('./nullflare-solver');
 
-  // Loop through each channel with a BRAND NEW browser session
   for (const ch of validChannels) {
     console.error(`\nProcessing: ${ch.name}`);
     let capturedM3u8 = null;
 
-    // Launch fresh browser
+    // Fresh browser session for each channel
     const browser = await chromium.launchPersistentContext(`./session-${ch.name.replace(/[^a-z0-9]/gi, '')}`, {
       headless: false,
       channel: 'chrome',
@@ -112,42 +109,39 @@ async function main() {
     });
 
     try {
-      // Directly open the player URL
-      console.error(`   -> Opening Player URL directly: ${ch.playerUrl}`);
+      console.error(`   -> Opening: ${ch.playerUrl}`);
       await p.goto(ch.playerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       
-      // Wait 30 seconds for Turnstile Extension to solve Cloudflare
-      console.error(`   -> Waiting 30s for Cloudflare to resolve...`);
-      await p.waitForTimeout(30000);
+      // WAIT 40 SECONDS for NullFlare extension to solve Cloudflare
+      console.error(`   -> Waiting 40s for NullFlare to solve...`);
+      await p.waitForTimeout(40000);
 
       let targetUrl = ch.playerUrl;
 
-      // If it's a player page, extract fid and go to uembed
       if (ch.playerUrl.includes('player.php')) {
         const pHtml = await p.content();
         const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
         
         if (fMatch) {
           targetUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
-          console.error(`   -> Found fid: ${fMatch[1]}. Loading uembed...`);
+          console.error(`   -> Found fid: ${fMatch[1]}`);
           await p.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
         } else {
-          console.error(`   -> [Error] Cloudflare still blocked. No fid found.`);
+          console.error(`   -> [Error] Cloudflare still blocking.`);
         }
       }
 
-      // Wait for the network sniffer to catch the m3u8
-      console.error(`   -> Waiting for m3u8 stream...`);
+      // Wait for m3u8 (20s)
       for (let i = 0; i < 20; i++) {
         if (capturedM3u8) break;
         await p.waitForTimeout(1000);
       }
 
       if (capturedM3u8) {
-        console.error(`   [OK] Captured stream!`);
+        console.error(`   [OK] Captured!`);
         results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
       } else {
-        console.error(`   [Error] No .m3u8 request intercepted.`);
+        console.error(`   [Error] No m3u8.`);
       }
 
     } catch (err) {
@@ -157,10 +151,9 @@ async function main() {
     }
   }
 
-  // Generate Output Files
+  // Save files
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n`;
-
   for (const r of results) {
     playlistContent += `#EXTINF:-1 tvg-logo="${r.logo}" group-title="Sports", ${r.name}\n`;
     playlistContent += `#EXTVLCOPT:http-origin=https://bhalocast.com\n`;
@@ -168,11 +161,9 @@ async function main() {
     playlistContent += `#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\n`;
     playlistContent += `${r.m3u8}\n`;
   }
-
   fs.writeFileSync('playlist.m3u', playlistContent, 'utf8');
   fs.writeFileSync('schedule.json', JSON.stringify(schedules, null, 2), 'utf8');
-
-  console.error(`\nFinished! Generated playlist.m3u with ${results.length} channels.`);
+  console.error(`\nDone! ${results.length} streams.`);
 }
 
 main();
