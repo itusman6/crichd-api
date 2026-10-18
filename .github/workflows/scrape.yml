@@ -1,4 +1,4 @@
-name: CricHD Playlist and Schedules
+name: CricHD Playlist
 
 on:
   schedule:
@@ -16,7 +16,13 @@ jobs:
       - name: Install Xvfb and Chrome
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb google-chrome-stable
+          sudo apt-get install -y xvfb google-chrome-stable unzip wget
+
+      - name: Download Turnstile Solver Extension
+        run: |
+          # Download the extension from Chrome Web Store (using a crx downloader)
+          wget -O extension.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=120.0&acceptformat=crx2,crx3&x=id%3Dijmhjekchmipnifjiahkapifokdffffo%26uc"
+          unzip extension.crx -d turnstile-solver
 
       - uses: actions/setup-node@v4
         with:
@@ -26,27 +32,22 @@ jobs:
         run: |
           npm install
           npx playwright install --with-deps chromium
-          npx playwright install chromium
 
       - name: Run scraper
-        env:
-          RESIDENTIAL_PROXY: ${{ secrets.RESIDENTIAL_PROXY_URL }}
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
             node scrape.js
             
           echo "--- Playlist Preview ---"
           head -n 10 playlist.m3u || true
-          echo "--- Schedule Preview ---"
-          head -n 15 schedule.json || true
 
-      - name: Upload Playlist Artifact
+      - name: Upload Playlist
         uses: actions/upload-artifact@v4
         with:
           name: crichd-playlist
           path: playlist.m3u
 
-      - name: Upload Schedule Artifact
+      - name: Upload Schedule
         uses: actions/upload-artifact@v4
         with:
           name: crichd-schedule
