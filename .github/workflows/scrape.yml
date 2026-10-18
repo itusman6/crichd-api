@@ -1,4 +1,4 @@
-name: CricHD Playlist and Schedules
+name: CricHD Playlist
 
 on:
   schedule:
@@ -16,7 +16,7 @@ jobs:
       - name: Install Xvfb and system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb google-chrome-stable
+          sudo apt-get install -y xvfb
 
       - uses: actions/setup-node@v4
         with:
@@ -29,24 +29,16 @@ jobs:
           npx playwright install chromium
 
       - name: Run scraper
+        env:
+          RESIDENTIAL_PROXY: ${{ secrets.RESIDENTIAL_PROXY_URL }}
         run: |
-          # Since no proxy is used, we run without any RESIDENTIAL_PROXY env variable
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
             node scrape.js
             
           echo "--- Playlist Preview ---"
           head -n 10 playlist.m3u || true
-          echo "--- Schedule Preview ---"
-          head -n 15 schedule.json || true
 
-      - name: Upload Playlist Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: crichd-playlist
+          name: playlist
           path: playlist.m3u
-
-      - name: Upload Schedule Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: crichd-schedule
-          path: schedule.json
