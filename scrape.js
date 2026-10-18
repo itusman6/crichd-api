@@ -8,6 +8,7 @@ const PLAYER = 'https://playsza.st';
 async function main() {
   console.error('Launching persistent browser session...');
   
+  // No proxy. Running directly.
   const browser = await chromium.launchPersistentContext('./chrome-session', {
     headless: false,
     channel: 'chrome', 
@@ -30,7 +31,7 @@ async function main() {
       console.error('\n============================================================');
       console.error('🛑 CLOUDFLARE DETECTED! Waiting 30 seconds for auto-bypass...');
       console.error('============================================================\n');
-      // Auto-wait instead of readline prompt so GitHub doesn't hang
+      // GitHub Actions ke liye auto-wait
       await page.waitForTimeout(30000); 
     }
   } catch (err) {
