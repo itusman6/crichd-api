@@ -6,69 +6,33 @@ const BASE = 'https://crichd.mobile';
 const PLAYER = 'https://playsza.st';
 
 async function main() {
-  const PROXY = process.env.RESIDENTIAL_PROXY;
+  console.error('Launching persistent browser session...');
   
-  console.error('Launching browser...');
-  const browser = await chromium.launch({
-    headless: false, // Required for Xvfb in GitHub Actions
+  const browser = await chromium.launchPersistentContext('./chrome-session', {
+    headless: false,
+    channel: 'chrome', 
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--ignore-certificate-errors',
-      '--window-size=1920,1080'
-    ]
+      '--disable-dev-shm-usage'
+    ],
+    viewport: { width: 1280, height: 720 }
   });
 
-  const contextOptions = {
-    viewport: { width: 1920, height: 1080 },
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-  };
-
-  // CORRECT: Configure proxy inside newContext options
-  if (PROXY) {
-    console.error('[Proxy Configured] Parsing credentials...');
-    try {
-      const proxyUrl = new URL(PROXY);
-      let pUser = proxyUrl.username;
-      let pPass = proxyUrl.password;
-
-      if (!pUser && pPass) {
-        pUser = pPass;
-        pPass = '';
-      }
-
-      contextOptions.proxy = {
-        server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
-        username: decodeURIComponent(pUser),
-        password: decodeURIComponent(pPass)
-      };
-      
-      console.error(`[Proxy Configured] Routing via: ${proxyUrl.hostname}:${proxyUrl.port}`);
-    } catch (e) {
-      console.error('[Proxy Error] Failed to parse RESIDENTIAL_PROXY URL:', e.message);
-    }
-  }
-
-  const context = await browser.newContext(contextOptions);
-  const page = await context.newPage();
-
-  // Route optimization: block heavy media/fonts
-  await page.route('**/*', route => {
-    const type = route.request().resourceType();
-    if (['media', 'font'].includes(type)) {
-      route.abort();
-    } else {
-      route.continue();
-    }
-  });
-
+  const page = await browser.pages()[0] || await browser.newPage();
   console.error('Fetching CricHD homepage...');
+  
   try {
-    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 90000 });
-    await page.waitForTimeout(5000); 
+    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    
+    let title = await page.title();
+    if (title.includes('Just a moment') || title.includes('Attention Required')) {
+      console.error('\n============================================================');
+      console.error('🛑 CLOUDFLARE DETECTED! Waiting 30 seconds for auto-bypass...');
+      console.error('============================================================\n');
+      // Auto-wait instead of readline prompt so GitHub doesn't hang
+      await page.waitForTimeout(30000); 
+    }
   } catch (err) {
     console.error('Failed to load homepage:', err.message);
     await browser.close();
@@ -80,26 +44,26 @@ async function main() {
   const channels = [];
   const schedules = [];
 
-  // Extract Schedules
+  // --- EXTRACT SCHEDULES ---
   $('table').find('tr').each((_, el) => {
-    const $row =$(el);
+    const $row = $(el);
     const league = $row.find('td').eq(1).text().trim();
     const title = $row.find('td').eq(2).text().trim();
     const time = $row.find('td').eq(3).text().trim().replace(/\s+/g, ' ');
-    if (title && league && time) schedules.push({ league, title, time });
+    if (title && league && time) {
+      schedules.push({ league, title, time });
+    }
   });
 
-  // Extract Channels
+  // --- EXTRACT CHANNELS ---
   $('a[href*="/channels/"]').each((_, el) => {
     const href = $(el).attr('href');
-    const img = $(el).find('img[title], img[alt]');
-    const titleAttr = $(el).attr('title') || img.attr('title') || img.attr('alt');
-    
-    if (href && titleAttr) {
-      const name = titleAttr.replace(/\s+Live Streaming.*$/i, '').trim();
+    const img = $(el).find('img[title]');
+    if (img.length && href) {
+      const name = img.attr('title').replace(/\s+Live Streaming.*$/i, '').trim();
       const fullUrl = href.startsWith('http') ? href : `${BASE}${href}`;
       let rawImgSrc = img.attr('src') || '';
-      const logoUrl = rawImgSrc ? (rawImgSrc.startsWith('http') ? rawImgSrc : `${BASE}${rawImgSrc}`) : '';
+      const logoUrl = rawImgSrc.startsWith('http') ? rawImgSrc : `${BASE}${rawImgSrc}`;
 
       if (!channels.some(c => c.url === fullUrl)) {
         channels.push({ name, url: fullUrl, logo: logoUrl });
@@ -107,24 +71,23 @@ async function main() {
     }
   });
 
-  console.error(`Found ${channels.length} channels and ${schedules.length} schedule entries.`);
-  
+  console.error(`Found ${channels.length} unique channels and ${schedules.length} schedules. Monitoring network traffic...\n`);
   const results = [];
 
   for (const ch of channels) {
+    const p = await browser.newPage();
     let capturedM3u8 = null;
-    const p = await context.newPage();
 
     p.on('request', request => {
-      const reqUrl = request.url();
-      if (reqUrl.includes('.m3u8')) {
-        capturedM3u8 = reqUrl;
+      const url = request.url();
+      if (url.includes('.m3u8')) {
+        capturedM3u8 = url;
       }
     });
 
     try {
       console.error(`Processing: ${ch.name}`);
-      await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await p.waitForTimeout(1500);
 
       const channelHtml = await p.content();
@@ -137,19 +100,32 @@ async function main() {
         const match = channelHtml.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
         if (match) {
           const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
-          await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-          await p.waitForTimeout(3000); 
+          await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          await p.waitForTimeout(2000);
           const pHtml = await p.content();
           const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
-          if (fMatch) playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
+          if (fMatch) {
+            playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
+          }
         }
       }
 
-      if (playerUrl) {
-        await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      if (!playerUrl) {
+        const frames = p.frames();
+        for (const frame of frames) {
+          const fUrl = frame.url();
+          if (fUrl.includes('uembed.php') || fUrl.includes('player.php')) {
+            playerUrl = fUrl;
+            break;
+          }
+        }
       }
 
-      for (let i = 0; i < 12; i++) {
+      if (playerUrl && !p.url().includes(playerUrl)) {
+        await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      }
+
+      for (let i = 0; i < 10; i++) {
         if (capturedM3u8) break;
         await p.waitForTimeout(1000);
       }
@@ -157,10 +133,10 @@ async function main() {
       await p.close();
 
       if (capturedM3u8) {
-        console.error(`   [OK] Captured stream for ${ch.name}`);
+        console.error(`   [OK] Captured stream & source poster`);
         results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
       } else {
-        console.error(`   [Error] Failed to intercept .m3u8 for ${ch.name}`);
+        console.error(`   [Error] No .m3u8 request intercepted for ${ch.name}`);
       }
     } catch (err) {
       await p.close();
@@ -170,6 +146,7 @@ async function main() {
 
   await browser.close();
 
+  // Generate M3U playlist file content using source assets
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n`;
 
@@ -183,11 +160,8 @@ async function main() {
 
   fs.writeFileSync('playlist.m3u', playlistContent, 'utf8');
   fs.writeFileSync('schedule.json', JSON.stringify(schedules, null, 2), 'utf8');
-  
-  console.error(`\nFinished! Generated playlist.m3u with ${results.length} streams.`);
+
+  console.error(`\nFinished! Generated playlist.m3u with ${results.length} channels.`);
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+main();
