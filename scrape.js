@@ -9,11 +9,10 @@ const PLAYER = 'https://playsza.st';
 async function main() {
   console.error('Launching browser with Turnstile Solver extension...');
   
-  // Resolve absolute path so Playwright finds the extension correctly
   const extensionPath = path.resolve('./turnstile-solver');
 
   const browser = await chromium.launchPersistentContext('./chrome-session', {
-    headless: false, // MUST be false for extensions to load
+    headless: false,
     channel: 'chrome',
     args: [
       '--disable-blink-features=AutomationControlled',
@@ -30,7 +29,7 @@ async function main() {
   
   try {
     await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(3000); // Give extension time to initialize
+    await page.waitForTimeout(5000); 
   } catch (err) {
     console.error('Failed to load homepage:', err.message);
     await browser.close();
@@ -62,7 +61,6 @@ async function main() {
       const fullUrl = href.startsWith('http') ? href : `${BASE}${href}`;
       let rawImgSrc = img.attr('src') || '';
       const logoUrl = rawImgSrc.startsWith('http') ? rawImgSrc : `${BASE}${rawImgSrc}`;
-
       if (!channels.some(c => c.url === fullUrl)) {
         channels.push({ name, url: fullUrl, logo: logoUrl });
       }
@@ -86,7 +84,7 @@ async function main() {
     try {
       console.error(`Processing: ${ch.name}`);
       await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await p.waitForTimeout(1500);
+      await p.waitForTimeout(2000);
 
       const channelHtml = await p.content();
       let playerUrl = '';
@@ -98,15 +96,20 @@ async function main() {
         const match = channelHtml.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
         if (match) {
           const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
+          console.error(`   -> Loading Player Page: ${pPageUrl}`);
           await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
           
-          // Wait 15 seconds for the extension to solve Turnstile
-          await p.waitForTimeout(15000); 
+          // Wait 30 seconds for the Turnstile extension to solve the challenge
+          await p.waitForTimeout(30000); 
           
           const pHtml = await p.content();
           const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
+          
           if (fMatch) {
             playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
+            console.error(`   -> Found fid: ${fMatch[1]}`);
+          } else {
+            console.error(`   -> [Error] Cloudflare still blocking. No fid found.`);
           }
         }
       }
@@ -117,16 +120,19 @@ async function main() {
           const fUrl = frame.url();
           if (fUrl.includes('uembed.php') || fUrl.includes('player.php')) {
             playerUrl = fUrl;
+            console.error(`   -> Found frame URL: ${playerUrl}`);
             break;
           }
         }
       }
 
       if (playerUrl && !p.url().includes(playerUrl)) {
+        console.error(`   -> Loading Embed Page: ${playerUrl}`);
         await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       }
 
-      for (let i = 0; i < 10; i++) {
+      // Wait 20 seconds for the network sniffer to catch the .m3u8 request
+      for (let i = 0; i < 20; i++) {
         if (capturedM3u8) break;
         await p.waitForTimeout(1000);
       }
@@ -134,7 +140,7 @@ async function main() {
       await p.close();
 
       if (capturedM3u8) {
-        console.error(`   [OK] Captured stream & source poster`);
+        console.error(`   [OK] Captured stream for ${ch.name}`);
         results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
       } else {
         console.error(`   [Error] No .m3u8 request intercepted for ${ch.name}`);
