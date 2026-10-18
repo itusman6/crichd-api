@@ -6,26 +6,36 @@ const BASE = 'https://crichd.mobile';
 const PLAYER = 'https://playsza.st';
 
 async function main() {
-  console.log('Launching browser context for production CI...');
+  console.log('Launching robust stealth browser for CI production...');
   
-  // Use headless: true and drop 'channel: 'chrome'' so it runs smoothly on GitHub Actions runners without an XServer
-  const browser = await chromium.launchPersistentContext('./chrome-session', {
+  const browser = await chromium.launch({
     headless: true,
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
+      '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu'
-    ],
-    viewport: { width: 1280, height: 720 }
+      '--disable-gpu',
+      '--ignore-certificate-errors',
+      '--window-size=1920,1080'
+    ]
   });
 
-  const page = await browser.pages()[0] || await browser.newPage();
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    viewport: { width: 1920, height: 1080 },
+    locale: 'en-US',
+    extraHTTPHeaders: {
+      'Accept-Language': 'en-US,en;q=0.9'
+    }
+  });
+
+  const page = await context.newPage();
   console.log('Fetching CricHD homepage...');
   
   try {
     await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(4000); // Allow scripts and headers to load
+    await page.waitForTimeout(5000); // Give Cloudflare headless check time to clear
   } catch (err) {
     console.error('Failed to load homepage:', err.message);
     await browser.close();
@@ -51,82 +61,89 @@ async function main() {
     }
   });
 
-  console.log(`Found ${channels.length} unique channels. Monitoring network traffic...\n`);
+  console.log(`Found ${channels.length} channels. Extracting streams with auto-retry...\n`);
   const results = [];
 
   for (const ch of channels) {
-    const p = await browser.newPage();
     let capturedM3u8 = null;
+    let attempts = 0;
 
-    p.on('request', request => {
-      const url = request.url();
-      if (url.includes('.m3u8')) {
-        capturedM3u8 = url;
-      }
-    });
+    // Retry up to 2 times per channel if it doesn't catch on the first try
+    while (!capturedM3u8 && attempts < 2) {
+      attempts++;
+      const p = await context.newPage();
 
-    try {
-      console.log(`Processing: ${ch.name}`);
-      await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await p.waitForTimeout(1500);
+      p.on('request', request => {
+        const url = request.url();
+        if (url.includes('.m3u8')) {
+          capturedM3u8 = url;
+        }
+      });
 
-      const channelHtml = await p.content();
-      let playerUrl = '';
-      
-      if (channelHtml.includes('uembed.php?v=')) {
-        const match = channelHtml.match(/uembed\.php\?v=([A-Za-z0-9_-]+)/);
-        if (match) playerUrl = `${PLAYER}/uembed.php?v=${match[1]}`;
-      } else if (channelHtml.includes('player.php?id=')) {
-        const match = channelHtml.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
-        if (match) {
-          const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
-          await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          await p.waitForTimeout(2000);
-          const pHtml = await p.content();
-          const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
-          if (fMatch) {
-            playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
+      try {
+        console.log(`Processing: ${ch.name} (Attempt ${attempts})`);
+        await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await p.waitForTimeout(2000);
+
+        const channelHtml = await p.content();
+        let playerUrl = '';
+        
+        if (channelHtml.includes('uembed.php?v=')) {
+          const match = channelHtml.match(/uembed\.php\?v=([A-Za-z0-9_-]+)/);
+          if (match) playerUrl = `${PLAYER}/uembed.php?v=${match[1]}`;
+        } else if (channelHtml.includes('player.php?id=')) {
+          const match = channelHtml.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
+          if (match) {
+            const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
+            await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await p.waitForTimeout(2000);
+            const pHtml = await p.content();
+            const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
+            if (fMatch) {
+              playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
+            }
           }
         }
-      }
 
-      if (!playerUrl) {
-        const frames = p.frames();
-        for (const frame of frames) {
-          const fUrl = frame.url();
-          if (fUrl.includes('uembed.php') || fUrl.includes('player.php')) {
-            playerUrl = fUrl;
-            break;
+        if (!playerUrl) {
+          const frames = p.frames();
+          for (const frame of frames) {
+            const fUrl = frame.url();
+            if (fUrl.includes('uembed.php') || fUrl.includes('player.php')) {
+              playerUrl = fUrl;
+              break;
+            }
           }
         }
-      }
 
-      if (playerUrl && !p.url().includes(playerUrl)) {
-        await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      }
+        if (playerUrl && !p.url().includes(playerUrl)) {
+          await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        }
 
-      for (let i = 0; i < 10; i++) {
-        if (capturedM3u8) break;
-        await p.waitForTimeout(1000);
-      }
+        // Wait up to 12 seconds for the stream to initialize
+        for (let i = 0; i < 12; i++) {
+          if (capturedM3u8) break;
+          await p.waitForTimeout(1000);
+        }
 
-      await p.close();
-
-      if (capturedM3u8) {
-        console.log(`   [OK] Captured stream`);
-        results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
-      } else {
-        console.log(`   [Warning] No .m3u8 intercepted for ${ch.name}`);
+        await p.close();
+      } catch (err) {
+        await p.close();
+        console.log(`   [Error on attempt ${attempts}] ${ch.name}: ${err.message}`);
       }
-    } catch (err) {
-      await p.close();
-      console.log(`   [Error] ${ch.name}: ${err.message}`);
+    }
+
+    if (capturedM3u8) {
+      console.log(`   [OK] Captured stream for ${ch.name}`);
+      results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
+    } else {
+      console.log(`   [Warning] Failed to intercept .m3u8 for ${ch.name}`);
     }
   }
 
   await browser.close();
 
-  // Generate M3U playlist file content with source logos and custom VLC options
+  // Generate M3U playlist file content
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n`;
 
