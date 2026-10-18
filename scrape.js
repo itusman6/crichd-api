@@ -69,20 +69,19 @@ async function main() {
   }
   await browser2.close();
 
-  console.error(`\n=== PHASE 2: OPENING FRESH SESSIONS IN EDGE ===`);
+  console.error(`\n=== PHASE 2: OPENING FRESH SESSIONS ===`);
   
   const results = [];
-  // Path where rektCaptcha will be extracted
-  const extensionPath = path.resolve('./rektcaptcha');
+  const extensionPath = path.resolve('./turnstile-solver');
 
   for (const ch of validChannels) {
     console.error(`\nProcessing: ${ch.name}`);
     let capturedM3u8 = null;
 
-    // EDGE LAUNCH
+    // Use Chromium channel, NOT Edge, NOT Chrome
     const browser = await chromium.launchPersistentContext(`./session-${ch.name.replace(/[^a-z0-9]/gi, '')}`, {
       headless: false,
-      channel: 'msedge', // Using Edge
+      channel: 'chromium', // IMPORTANT: Use bundled Chromium for extension support
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -103,8 +102,8 @@ async function main() {
       console.error(`   -> Opening: ${ch.playerUrl}`);
       await p.goto(ch.playerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       
-      // Wait 40 seconds for rektCaptcha to solve if it can
-      console.error(`   -> Waiting 40s for rektCaptcha...`);
+      // Wait 40 seconds for Raptor extension to solve Cloudflare Turnstile
+      console.error(`   -> Waiting 40s for Turnstile solver...`);
       await p.waitForTimeout(40000);
 
       let targetUrl = ch.playerUrl;
@@ -118,7 +117,7 @@ async function main() {
           console.error(`   -> Found fid: ${fMatch[1]}`);
           await p.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
         } else {
-          console.error(`   -> [Error] Cloudflare still blocking. rektCaptcha cannot solve Turnstile.`);
+          console.error(`   -> [Error] Cloudflare still blocking.`);
         }
       }
 
