@@ -12,20 +12,11 @@ async function main() {
   let proxyConfig = undefined;
 
   if (proxyUrl) {
-    try {
-      const parsed = new URL(proxyUrl);
-      proxyConfig = {
-        server: `${parsed.protocol}//${parsed.hostname}:${parsed.port}`,
-        username: decodeURIComponent(parsed.username),
-        password: decodeURIComponent(parsed.password)
-      };
-      console.log(`[Proxy Configured] Routing traffic through IPLoop: ${parsed.hostname}:${parsed.port}`);
-    } catch (e) {
-      console.error('Invalid RESIDENTIAL_PROXY_URL format:', e.message);
-    }
+    proxyConfig = { server: proxyUrl.trim() };
+    console.log('[Proxy Configured] Routing traffic through IPLoop proxy.');
   }
 
-  const browser = await chromium.launch({
+  const browserOptions = {
     headless: true,
     args: [
       '--disable-blink-features=AutomationControlled',
@@ -36,25 +27,24 @@ async function main() {
       '--ignore-certificate-errors',
       '--window-size=1920,1080'
     ]
-  });
+  };
 
-  const contextOptions = {
+  if (proxyConfig) {
+    browserOptions.proxy = proxyConfig;
+  }
+
+  const browser = await chromium.launch(browserOptions);
+
+  const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     viewport: { width: 1920, height: 1080 },
     locale: 'en-US',
     extraHTTPHeaders: {
       'Accept-Language': 'en-US,en;q=0.9'
     }
-  };
+  });
 
-  if (proxyConfig) {
-    contextOptions.proxy = proxyConfig;
-  }
-
-  const context = await browser.newContext(contextOptions);
   const page = await context.newPage();
-  
-  // Set extended navigation timeout (90 seconds) for proxy stability
   page.setDefaultNavigationTimeout(90000);
 
   console.log('Fetching CricHD homepage via proxy...');
