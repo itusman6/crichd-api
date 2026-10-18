@@ -1,4 +1,4 @@
-name: CricHD Playlist and Schedules
+name: CricHD Playlist
 
 on:
   schedule:
@@ -13,25 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Xvfb and Chrome
+      - name: Install Xvfb and system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb google-chrome-stable unzip wget
-
-      - name: Download Turnstile Solver Extension
-        run: |
-          # Download the extension
-          wget -O extension.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=120.0&acceptformat=crx2,crx3&x=id%3Dijmhjekchmipnifjiahkapifokdffffo%26uc"
-          
-          # Extract, ignoring the crx header warning
-          unzip -o extension.crx -d turnstile-solver || true
-          
-          # Verify extraction
-          if [ ! -f "turnstile-solver/manifest.json" ]; then
-            echo "ERROR: manifest.json not found. Extraction failed."
-            exit 1
-          fi
-          echo "Extension extracted successfully."
+          sudo apt-get install -y xvfb
 
       - uses: actions/setup-node@v4
         with:
@@ -40,27 +25,17 @@ jobs:
       - name: Install dependencies
         run: |
           npm install
-          npx playwright install --with-deps chromium
           npx playwright install chromium
 
       - name: Run scraper
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
             node scrape.js
-            
+          
           echo "--- Playlist Preview ---"
           head -n 10 playlist.m3u || true
-          echo "--- Schedule Preview ---"
-          head -n 15 schedule.json || true
 
-      - name: Upload Playlist Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: crichd-playlist
+          name: playlist
           path: playlist.m3u
-
-      - name: Upload Schedule Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: crichd-schedule
-          path: schedule.json
