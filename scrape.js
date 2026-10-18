@@ -153,9 +153,9 @@ async function main() {
     playlistContent += `${r.m3u8}\n\n`;
   }
 
-  // 2. Schedules Group (Adding schedules as M3U entries with channel link)
+  // 2. Schedules Group (All schedules in a single group)
   for (const s of schedules) {
-    playlistContent += `#EXTINF:-1 group-title="${s.league} Schedule", ${s.title} (${s.time})\n`;
+    playlistContent += `#EXTINF:-1 group-title="Schedules", ${s.title} (${s.league} - ${s.time})\n`;
     // Since schedule doesn't have a direct stream, we link to the channel page as a fallback
     playlistContent += `${BASE}/\n\n`;
   }
