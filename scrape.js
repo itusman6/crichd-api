@@ -26,37 +26,10 @@ const channelsData = [
 
 const PLAYER = 'https://playsza.st';
 
-async function fetchM3u8(page, channel) {
-  let capturedM3u8 = null;
-  
-  // Set up sniffer
-  const requestHandler = request => {
-    if (request.url().includes('.m3u8')) capturedM3u8 = request.url();
-  };
-  page.on('request', requestHandler);
-
-  try {
-    // Load the uembed page directly
-    await page.goto(`${PLAYER}/uembed.php?v=${channel.fid}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    
-    // Wait up to 5 seconds for the m3u8 to be requested
-    for (let i = 0; i < 5; i++) {
-      if (capturedM3u8) break;
-      await page.waitForTimeout(1000);
-    }
-  } catch (err) {
-    console.log(`   [Error] ${channel.name}: ${err.message}`);
-  } finally {
-    page.off('request', requestHandler);
-  }
-
-  return capturedM3u8;
-}
-
 async function main() {
-  console.log('=== FETCHING M3U8 LINKS VIA BROWSER (NO EXTENSION) ===');
+  console.log('=== FETCHING M3U8 LINKS VIA DEVTOOLS SNIFFER ===');
   
-  // 1. Fetch schedules via simple HTTP (fast)
+  // 1. Fetch schedules via simple HTTP (fast, no Cloudflare on homepage)
   let schedules = [];
   try {
     const response = await fetch('https://crichd.mobile/');
@@ -91,36 +64,50 @@ async function main() {
 
   const results = [];
 
-  // 3. Process in batches of 3 to avoid getting blocked
-  const batchSize = 3;
-  for (let i = 0; i < channelsData.length; i += batchSize) {
-    const batch = channelsData.slice(i, i + batchSize);
-    
-    await Promise.all(batch.map(async (ch) => {
-      console.log(`Fetching: ${ch.name}`);
-      const page = await context.newPage();
-      
-      const m3u8 = await fetchM3u8(page, ch);
-      await page.close();
+  // 3. Process each FID
+  for (const ch of channelsData) {
+    console.log(`Fetching: ${ch.name}`);
+    const page = await context.newPage();
+    let capturedM3u8 = null;
 
-      if (m3u8) {
-        console.log(`   [OK] ${ch.name}`);
-        results.push({ ...ch, m3u8 });
-      } else {
-        console.log(`   [Error] No m3u8 for ${ch.name}`);
+    // DevTools Network Sniffer
+    page.on('request', request => {
+      if (request.url().includes('.m3u8')) {
+        capturedM3u8 = request.url();
       }
-    }));
+    });
 
-    // Small delay between batches
-    await new Promise(r => setTimeout(r, 2000));
+    try {
+      // Open uembed directly using the fid
+      await page.goto(`${PLAYER}/uembed.php?v=${ch.fid}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      
+      // Wait up to 5 seconds for the m3u8 request to fire
+      for (let i = 0; i < 5; i++) {
+        if (capturedM3u8) break;
+        await page.waitForTimeout(1000);
+      }
+
+      if (capturedM3u8) {
+        console.log(`   [OK] ${ch.name}`);
+        results.push({ ...ch, m3u8: capturedM3u8 });
+      } else {
+        console.log(`   [Error] No m3u8 intercepted for ${ch.name}`);
+      }
+
+    } catch (err) {
+      console.log(`   [Error] ${ch.name}: ${err.message}`);
+    } finally {
+      await page.close();
+    }
   }
 
   await browser.close();
 
-  // 4. Generate M3U
+  // 4. Generate M3U file
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n\n`;
 
+  // Channels Group
   for (const r of results) {
     playlistContent += `#EXTINF:-1 tvg-logo="${r.logo}" group-title="24/7 Channels", ${r.name}\n`;
     playlistContent += `#EXTVLCOPT:http-origin=https://bhalocast.com\n`;
@@ -129,6 +116,7 @@ async function main() {
     playlistContent += `${r.m3u8}\n\n`;
   }
 
+  // Schedules Group (All in one group)
   for (const s of schedules) {
     playlistContent += `#EXTINF:-1 group-title="Schedules", ${s.title} (${s.time})\n`;
     playlistContent += `https://crichd.mobile/\n\n`;
