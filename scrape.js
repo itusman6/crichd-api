@@ -9,7 +9,7 @@ async function main() {
   const PROXY = process.env.RESIDENTIAL_PROXY;
   
   const launchOptions = {
-    headless: false, // Required when running with Xvfb in GitHub Actions
+    headless: false, // Required for Xvfb in GitHub Actions
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -18,12 +18,14 @@ async function main() {
       '--disable-gpu',
       '--ignore-certificate-errors',
       '--window-size=1920,1080'
-    ]
+    ],
+    viewport: { width: 1920, height: 1080 },
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   };
 
-  // CORRECT: Proxy configuration must be passed at browser launch in Playwright
+  // NATIVE PLAYWRIGHT PERSISTENT PROXY OBJECT (Resolves ERR_PROXY_AUTH_UNSUPPORTED)
   if (PROXY) {
-    console.error('[Proxy Configured] Parsing credentials for browser launch proxy...');
+    console.error('[Proxy Configured] Parsing credentials for persistent context...');
     try {
       const proxyUrl = new URL(PROXY);
       let pUser = proxyUrl.username;
@@ -46,17 +48,11 @@ async function main() {
     }
   }
 
-  console.error('Launching browser...');
-  const browser = await chromium.launch(launchOptions);
+  console.error('Launching persistent browser session...');
+  const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
+  const page = await browser.pages()[0] || await browser.newPage();
 
-  const context = await browser.newContext({
-    viewport: { width: 1920, height: 1080 },
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-  });
-
-  const page = await context.newPage();
-
-  // Safely route resources (only block heavy static media/fonts)
+  // Route optimization: block heavy media/fonts
   await page.route('**/*', route => {
     const type = route.request().resourceType();
     if (['media', 'font'].includes(type)) {
@@ -114,7 +110,7 @@ async function main() {
 
   for (const ch of channels) {
     let capturedM3u8 = null;
-    const p = await context.newPage();
+    const p = await browser.newPage();
 
     p.on('request', request => {
       const reqUrl = request.url();
@@ -139,7 +135,7 @@ async function main() {
         if (match) {
           const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
           await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-          await p.waitForTimeout(3000); // Wait for CF check
+          await p.waitForTimeout(3000); 
           const pHtml = await p.content();
           const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
           if (fMatch) playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
