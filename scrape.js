@@ -34,6 +34,8 @@ async function main() {
 
   console.error('Launching browser...');
   const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
+  
+  // Use the SAME page for everything to maintain the Cloudflare session
   const page = await browser.pages()[0] || await browser.newPage();
 
   // Optimize loading by blocking heavy images/media (except logos)
@@ -95,17 +97,20 @@ async function main() {
   
   const results = [];
 
-  // Process ALL channels. (If it times out on Actions, change to channels.slice(0, 10))
   for (const ch of channels) {
     console.error(`Processing: ${ch.name}`);
     let capturedM3u8 = null;
     
-    const requestHandler = req => { if (req.url().includes('.m3u8')) capturedM3u8 = req.url(); };
+    // Set up network sniffer for this channel
+    const requestHandler = req => { 
+      if (req.url().includes('.m3u8')) capturedM3u8 = req.url(); 
+    };
     page.on('request', requestHandler);
 
     try {
+      // 1. Load Channel Page
       await page.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(1500);
       
       let html = await page.content();
       let playerId = null;
@@ -121,8 +126,11 @@ async function main() {
         continue; 
       }
 
+      // 2. Load Player Page in the SAME TAB
       await page.goto(`${PLAYER}/player.php?id=${playerId}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(1500); 
+      
+      // CRITICAL: Wait 3 seconds to let Cloudflare finish its background checks
+      await page.waitForTimeout(3000); 
       
       html = await page.content();
       const fidMatch = html.match(/fid\s*=\s*["']([^"']+)["']/);
@@ -133,8 +141,10 @@ async function main() {
         continue; 
       }
 
+      // 3. Load uEmbed Page in the SAME TAB
       await page.goto(`${PLAYER}/uembed.php?v=${fidMatch[1]}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
+      // 4. Wait for the network sniffer to catch the m3u8
       for (let i = 0; i < 10; i++) {
         if (capturedM3u8) break;
         await page.waitForTimeout(1000);
@@ -150,6 +160,8 @@ async function main() {
     } catch (err) {
       console.error(`   [Error] ${ch.name}: ${err.message}`);
     }
+    
+    // Remove sniffer for the next channel
     page.off('request', requestHandler);
   }
 
