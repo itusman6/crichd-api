@@ -52,7 +52,7 @@ async function main() {
   try {
     await page.goto(BASE, { waitUntil: 'commit', timeout: 90000 });
     await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
-    await page.waitForTimeout(4000);
+    await page.waitForTimeout(5000); // Give extra time for full DOM rendering through proxy
   } catch (err) {
     console.error('Failed to load homepage through proxy:', err.message);
     await browser.close();
@@ -63,14 +63,17 @@ async function main() {
   const $ = cheerio.load(homeHtml);
   const channels = [];
 
-  $('a[href*="/channels/"]').each((_, el) => {
+  // Flexible selector to catch channels from sidebar/menu lists
+  $('a[href*="/channels/"], #cssmenu a, .sidebar-menu a').each((_, el) => {
     const href = $(el).attr('href');
-    const img = $(el).find('img[title]');
-    if (img.length && href) {
-      const name = img.attr('title').replace(/\s+Live Streaming.*$/i, '').trim();
+    const img = $(el).find('img[title], img[alt]');
+    const titleAttr = $(el).attr('title') || img.attr('title') || img.attr('alt');
+    
+    if (href && href.includes('/channels/') && titleAttr) {
+      const name = titleAttr.replace(/\s+Live Streaming.*$/i, '').trim();
       const fullUrl = href.startsWith('http') ? href : `${BASE}${href}`;
       let rawImgSrc = img.attr('src') || '';
-      const logoUrl = rawImgSrc.startsWith('http') ? rawImgSrc : `${BASE}${rawImgSrc}`;
+      const logoUrl = rawImgSrc ? (rawImgSrc.startsWith('http') ? rawImgSrc : `${BASE}${rawImgSrc}`) : '';
 
       if (!channels.some(c => c.url === fullUrl)) {
         channels.push({ name, url: fullUrl, logo: logoUrl });
