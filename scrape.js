@@ -9,16 +9,16 @@ async function main() {
   console.log('Launching robust stealth browser with IPLoop proxy support...');
   
   const proxyUrl = process.env.RESIDENTIAL_PROXY_URL;
-  let proxyServer = undefined;
-  let proxyUsername = undefined;
-  let proxyPassword = undefined;
+  let proxyConfig = undefined;
 
   if (proxyUrl) {
     try {
       const parsed = new URL(proxyUrl);
-      proxyServer = `${parsed.protocol}//${parsed.hostname}:${parsed.port}`;
-      proxyUsername = decodeURIComponent(parsed.username);
-      proxyPassword = decodeURIComponent(parsed.password);
+      proxyConfig = {
+        server: `${parsed.protocol}//${parsed.hostname}:${parsed.port}`,
+        username: decodeURIComponent(parsed.username),
+        password: decodeURIComponent(parsed.password)
+      };
       console.log(`[Proxy Configured] Routing traffic through IPLoop: ${parsed.hostname}:${parsed.port}`);
     } catch (e) {
       console.error('Invalid RESIDENTIAL_PROXY_URL format:', e.message);
@@ -47,30 +47,24 @@ async function main() {
     }
   };
 
-  if (proxyServer) {
-    contextOptions.proxy = { server: proxyServer };
+  if (proxyConfig) {
+    contextOptions.proxy = proxyConfig;
   }
 
   const context = await browser.newContext(contextOptions);
-
-  // Handle proxy authentication event natively across the context
-  if (proxyUsername && proxyPassword) {
-    context.on('auth', async (route) => {
-      await route.authenticate({
-        username: proxyUsername,
-        password: proxyPassword
-      });
-    });
-  }
-
   const page = await context.newPage();
-  console.log('Fetching CricHD homepage...');
+  
+  // Set extended navigation timeout (90 seconds) for proxy stability
+  page.setDefaultNavigationTimeout(90000);
+
+  console.log('Fetching CricHD homepage via proxy...');
   
   try {
-    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(5000);
+    await page.goto(BASE, { waitUntil: 'commit', timeout: 90000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(4000);
   } catch (err) {
-    console.error('Failed to load homepage:', err.message);
+    console.error('Failed to load homepage through proxy:', err.message);
     await browser.close();
     process.exit(1);
   }
@@ -104,6 +98,7 @@ async function main() {
     while (!capturedM3u8 && attempts < 2) {
       attempts++;
       const p = await context.newPage();
+      p.setDefaultNavigationTimeout(60000);
 
       p.on('request', request => {
         const url = request.url();
@@ -114,8 +109,9 @@ async function main() {
 
       try {
         console.log(`Processing: ${ch.name} (Attempt ${attempts})`);
-        await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await p.waitForTimeout(2000);
+        await p.goto(ch.url, { waitUntil: 'commit', timeout: 60000 });
+        await p.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
+        await p.waitForTimeout(1500);
 
         const channelHtml = await p.content();
         let playerUrl = '';
@@ -127,7 +123,8 @@ async function main() {
           const match = channelHtml.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
           if (match) {
             const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
-            await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await p.goto(pPageUrl, { waitUntil: 'commit', timeout: 60000 });
+            await p.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
             await p.waitForTimeout(2000);
             const pHtml = await p.content();
             const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
@@ -149,7 +146,8 @@ async function main() {
         }
 
         if (playerUrl && !p.url().includes(playerUrl)) {
-          await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          await p.goto(playerUrl, { waitUntil: 'commit', timeout: 60000 });
+          await p.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
         }
 
         for (let i = 0; i < 12; i++) {
