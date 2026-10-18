@@ -21,10 +21,26 @@ async function main() {
   // Schedules Extract
   $('table').find('tr').each((_, el) => {
     const $row = $(el);
-    const league = $row.find('td').eq(1).text().trim();
-    const title = $row.find('td').eq(2).text().trim();
-    const time = $row.find('td').eq(3).text().trim().replace(/\s+/g, ' ');
-    if (title && league && time) schedules.push({ league, title, time });
+    const cells = $row.find('td').map((_, td) => $(td).text().trim().replace(/\s+/g, ' ')).get();
+    if (cells.length < 4) return;
+
+    const league = cells[1];
+    const title = cells[2];
+
+    // Find the first cell that looks like a time (contains "Today", "Tomorrow", a date, or HH:MM)
+    let time = '';
+    for (let i = 3; i < cells.length; i++) {
+      const c = cells[i].replace(/^\d+/, '').trim();
+      if (/today|tomorrow|\d{1,2}:\d{2}|\d{2}-\d{2}-\d{4}/i.test(c)) {
+        time = c;
+        break;
+      }
+    }
+
+    if (!title || !league || !time) return;
+    if (/^(league|title|time|match)$/i.test(league)) return;
+
+    schedules.push({ league, title, time });
   });
 
   // Channels Extract
