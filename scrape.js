@@ -6,11 +6,10 @@ const BASE = 'https://crichd.mobile';
 const PLAYER = 'https://playsza.st';
 
 async function main() {
-  console.error('Launching browser...');
+  const PROXY = process.env.RESIDENTIAL_PROXY;
   
-  // Use persistent context to keep cookies/sessions (helps bypass CF faster)
-  const browser = await chromium.launchPersistentContext('./chrome-session', {
-    headless: false,
+  const launchOptions = {
+    headless: false, // Must be false for Cloudflare bypass
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -18,15 +17,43 @@ async function main() {
     ],
     viewport: { width: 1280, height: 720 },
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+  };
+
+  // Configure Proxy if provided in GitHub Secrets
+  if (PROXY) {
+    console.error('Proxy detected. Configuring proxy...');
+    const proxyUrl = new URL(PROXY);
+    launchOptions.proxy = {
+      server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
+      username: proxyUrl.username || 'iploop', 
+      password: proxyUrl.password
+    };
+  } else {
+    console.error('No proxy detected. Running with local IP...');
+  }
+
+  console.error('Launching browser...');
+  const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
+  const page = await browser.pages()[0] || await browser.newPage();
+
+  // Optimize loading by blocking heavy images/media (except logos)
+  await page.route('**/*', route => {
+    const type = route.request().resourceType();
+    if (['image', 'media', 'font'].includes(type)) {
+      if (!route.request().url().includes('/assets/channels/')) {
+        route.abort();
+      } else {
+        route.continue();
+      }
+    } else {
+      route.continue();
+    }
   });
 
-  const page = await browser.pages()[0] || await browser.newPage();
   console.error('Fetching CricHD homepage...');
-  
   try {
     await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    // Wait a few seconds to let CF challenge pass
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(3000); // Give Cloudflare time to auto-solve
   } catch (err) {
     console.error('Failed to load homepage:', err.message);
     await browser.close();
@@ -39,13 +66,11 @@ async function main() {
   const schedules = [];
 
   // 1. EXTRACT SCHEDULES
-  // Look for the table rows that contain match schedules
-  $('table.CRICKET-SCHEDULE, table').find('tr').each((_, el) => {
+  $('table').find('tr').each((_, el) => {
     const $row = $(el);
     const league = $row.find('td').eq(1).text().trim();
     const title = $row.find('td').eq(2).text().trim();
     const time = $row.find('td').eq(3).text().trim().replace(/\s+/g, ' ');
-    
     if (title && league && time) {
       schedules.push({ league, title, time });
     }
@@ -60,7 +85,6 @@ async function main() {
       const fullUrl = href.startsWith('http') ? href : `${BASE}${href}`;
       let rawImgSrc = img.attr('src') || '';
       const logoUrl = rawImgSrc.startsWith('http') ? rawImgSrc : `${BASE}${rawImgSrc}`;
-
       if (!channels.some(c => c.url === fullUrl)) {
         channels.push({ name, url: fullUrl, logo: logoUrl });
       }
@@ -71,86 +95,69 @@ async function main() {
   
   const results = [];
 
-  // Process only the first 5 channels to prevent GitHub Actions timeout (45 mins max)
-  // Change to `channels` if you want all of them.
-  for (const ch of channels.slice(0, 5)) {
-    const p = await browser.newPage();
+  // Process ALL channels. (If it times out on Actions, change to channels.slice(0, 10))
+  for (const ch of channels) {
+    console.error(`Processing: ${ch.name}`);
     let capturedM3u8 = null;
-
-    // THIS IS YOUR BRILLIANT LOGIC
-    p.on('request', request => {
-      const url = request.url();
-      if (url.includes('.m3u8')) {
-        capturedM3u8 = url;
-      }
-    });
+    
+    const requestHandler = req => { if (req.url().includes('.m3u8')) capturedM3u8 = req.url(); };
+    page.on('request', requestHandler);
 
     try {
-      console.error(`Processing channel: ${ch.name}`);
-      await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await p.waitForTimeout(1500);
-
-      const channelHtml = await p.content();
-      let playerUrl = '';
+      await page.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(1000);
       
-      if (channelHtml.includes('uembed.php?v=')) {
-        const match = channelHtml.match(/uembed\.php\?v=([A-Za-z0-9_-]+)/);
-        if (match) playerUrl = `${PLAYER}/uembed.php?v=${match[1]}`;
-      } else if (channelHtml.includes('player.php?id=')) {
-        const match = channelHtml.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
-        if (match) {
-          const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
-          await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          await p.waitForTimeout(2000);
-          const pHtml = await p.content();
-          const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
-          if (fMatch) {
-            playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
-          }
-        }
+      let html = await page.content();
+      let playerId = null;
+
+      if (html.includes('player.php?id=')) {
+        const match = html.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
+        if (match) playerId = match[1];
       }
 
-      if (!playerUrl) {
-        const frames = p.frames();
-        for (const frame of frames) {
-          const fUrl = frame.url();
-          if (fUrl.includes('uembed.php') || fUrl.includes('player.php')) {
-            playerUrl = fUrl;
-            break;
-          }
-        }
+      if (!playerId) { 
+        console.error(`   [Error] No player ID found.`); 
+        page.off('request', requestHandler);
+        continue; 
       }
 
-      if (playerUrl && !p.url().includes(playerUrl)) {
-        await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.goto(`${PLAYER}/player.php?id=${playerId}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(1500); 
+      
+      html = await page.content();
+      const fidMatch = html.match(/fid\s*=\s*["']([^"']+)["']/);
+      
+      if (!fidMatch) { 
+        console.error(`   [Error] No fid found (Cloudflare blocked).`); 
+        page.off('request', requestHandler);
+        continue; 
       }
 
-      // Wait up to 10 seconds for the network sniffer to catch the m3u8
+      await page.goto(`${PLAYER}/uembed.php?v=${fidMatch[1]}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
       for (let i = 0; i < 10; i++) {
         if (capturedM3u8) break;
-        await p.waitForTimeout(1000);
+        await page.waitForTimeout(1000);
       }
-
-      await p.close();
 
       if (capturedM3u8) {
-        console.error(`   [OK] Captured stream for ${ch.name}`);
+        console.error(`   [OK] Captured stream`);
         results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
       } else {
-        console.error(`   [Error] No .m3u8 request intercepted for ${ch.name}`);
+        console.error(`   [Error] No m3u8 intercepted`);
       }
+
     } catch (err) {
-      await p.close();
       console.error(`   [Error] ${ch.name}: ${err.message}`);
     }
+    page.off('request', requestHandler);
   }
 
   await browser.close();
 
-  // 3. GENERATE PLAYLIST M3U
+  // Generate Output Files
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n`;
-
   for (const r of results) {
     playlistContent += `#EXTINF:-1 tvg-logo="${r.logo}" group-title="Sports", ${r.name}\n`;
     playlistContent += `#EXTVLCOPT:http-origin=https://bhalocast.com\n`;
@@ -158,10 +165,7 @@ async function main() {
     playlistContent += `#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\n`;
     playlistContent += `${r.m3u8}\n`;
   }
-
   fs.writeFileSync('playlist.m3u', playlistContent, 'utf8');
-
-  // 4. GENERATE SCHEDULE JSON
   fs.writeFileSync('schedule.json', JSON.stringify(schedules, null, 2), 'utf8');
 
   console.error(`\nFinished! Saved playlist.m3u (${results.length} streams) and schedule.json (${schedules.length} matches).`);
