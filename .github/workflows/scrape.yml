@@ -16,8 +16,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: false # Prevents old creds from blocking the new token
+        # Removed persist-credentials: false so git can use GITHUB_TOKEN automatically
 
       - name: Install Xvfb and dependencies
         run: |
