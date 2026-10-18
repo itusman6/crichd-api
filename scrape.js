@@ -9,11 +9,8 @@ const PLAYER = 'https://playsza.st';
 async function main() {
   console.error('=== PHASE 1: FETCHING CHANNELS ===');
   
-  // Phase 1: Get channel list (headless, fast)
   const browser1 = await chromium.launch({ headless: true });
-  const context1 = await browser1.newContext();
-  const page1 = await context1.newPage();
-  
+  const page1 = await browser1.newPage();
   await page1.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
   const homeHtml = await page1.content();
   const $ = cheerio.load(homeHtml);
@@ -21,7 +18,6 @@ async function main() {
   const channels = [];
   const schedules = [];
 
-  // Schedules
   $('table').find('tr').each((_, el) => {
     const $row = $(el);
     const league = $row.find('td').eq(1).text().trim();
@@ -30,7 +26,6 @@ async function main() {
     if (title && league && time) schedules.push({ league, title, time });
   });
 
-  // Channels
   $('a[href*="/channels/"]').each((_, el) => {
     const href = $(el).attr('href');
     const img = $(el).find('img[title]');
@@ -48,17 +43,14 @@ async function main() {
   await browser1.close();
   console.error(`Found ${channels.length} channels.`);
 
-  // Extract Player URLs
   const browser2 = await chromium.launch({ headless: true });
-  const context2 = await browser2.newContext();
-  const page2 = await context2.newPage();
-  
+  const page2 = await browser2.newPage();
   const validChannels = [];
+  
   for (const ch of channels) {
     try {
       await page2.goto(ch.channelUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       const cHtml = await page2.content();
-      
       let playerUrl = '';
       if (cHtml.includes('uembed.php?v=')) {
         const match = cHtml.match(/uembed\.php\?v=([A-Za-z0-9_-]+)/);
@@ -67,7 +59,6 @@ async function main() {
         const match = cHtml.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
         if (match) playerUrl = `${PLAYER}/player.php?id=${match[1]}`;
       }
-      
       if (playerUrl) {
         validChannels.push({ ...ch, playerUrl });
         console.log(`   [+] ${ch.name}`);
@@ -78,20 +69,20 @@ async function main() {
   }
   await browser2.close();
 
-  console.error(`\n=== PHASE 2: OPENING FRESH SESSIONS ===`);
+  console.error(`\n=== PHASE 2: OPENING FRESH SESSIONS IN EDGE ===`);
   
   const results = [];
-  // Path to NullFlare extension (downloaded in workflow)
-  const extensionPath = path.resolve('./nullflare-solver');
+  // Path where rektCaptcha will be extracted
+  const extensionPath = path.resolve('./rektcaptcha');
 
   for (const ch of validChannels) {
     console.error(`\nProcessing: ${ch.name}`);
     let capturedM3u8 = null;
 
-    // Fresh browser session for each channel
+    // EDGE LAUNCH
     const browser = await chromium.launchPersistentContext(`./session-${ch.name.replace(/[^a-z0-9]/gi, '')}`, {
       headless: false,
-      channel: 'chrome',
+      channel: 'msedge', // Using Edge
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -112,8 +103,8 @@ async function main() {
       console.error(`   -> Opening: ${ch.playerUrl}`);
       await p.goto(ch.playerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       
-      // WAIT 40 SECONDS for NullFlare extension to solve Cloudflare
-      console.error(`   -> Waiting 40s for NullFlare to solve...`);
+      // Wait 40 seconds for rektCaptcha to solve if it can
+      console.error(`   -> Waiting 40s for rektCaptcha...`);
       await p.waitForTimeout(40000);
 
       let targetUrl = ch.playerUrl;
@@ -127,11 +118,10 @@ async function main() {
           console.error(`   -> Found fid: ${fMatch[1]}`);
           await p.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
         } else {
-          console.error(`   -> [Error] Cloudflare still blocking.`);
+          console.error(`   -> [Error] Cloudflare still blocking. rektCaptcha cannot solve Turnstile.`);
         }
       }
 
-      // Wait for m3u8 (20s)
       for (let i = 0; i < 20; i++) {
         if (capturedM3u8) break;
         await p.waitForTimeout(1000);
@@ -151,7 +141,6 @@ async function main() {
     }
   }
 
-  // Save files
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n`;
   for (const r of results) {
