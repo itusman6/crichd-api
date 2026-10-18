@@ -1,6 +1,7 @@
 import { chromium } from 'rebrowser-playwright';
 import * as cheerio from 'cheerio';
 import fs from 'fs';
+import path from 'path';
 
 const BASE = 'https://crichd.mobile';
 const PLAYER = 'https://playsza.st';
@@ -8,11 +9,11 @@ const PLAYER = 'https://playsza.st';
 async function main() {
   console.error('Launching browser with Turnstile Solver extension...');
   
-  // Path to the unpacked extension
-  const extensionPath = './turnstile-solver';
+  // Resolve absolute path so Playwright finds the extension correctly
+  const extensionPath = path.resolve('./turnstile-solver');
 
   const browser = await chromium.launchPersistentContext('./chrome-session', {
-    headless: false,
+    headless: false, // MUST be false for extensions to load
     channel: 'chrome',
     args: [
       '--disable-blink-features=AutomationControlled',
@@ -29,7 +30,7 @@ async function main() {
   
   try {
     await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(3000); // Give extension time to initialize
   } catch (err) {
     console.error('Failed to load homepage:', err.message);
     await browser.close();
@@ -41,16 +42,18 @@ async function main() {
   const channels = [];
   const schedules = [];
 
-  // Schedules
+  // --- EXTRACT SCHEDULES ---
   $('table').find('tr').each((_, el) => {
     const $row = $(el);
     const league = $row.find('td').eq(1).text().trim();
     const title = $row.find('td').eq(2).text().trim();
     const time = $row.find('td').eq(3).text().trim().replace(/\s+/g, ' ');
-    if (title && league && time) schedules.push({ league, title, time });
+    if (title && league && time) {
+      schedules.push({ league, title, time });
+    }
   });
 
-  // Channels
+  // --- EXTRACT CHANNELS ---
   $('a[href*="/channels/"]').each((_, el) => {
     const href = $(el).attr('href');
     const img = $(el).find('img[title]');
@@ -59,17 +62,26 @@ async function main() {
       const fullUrl = href.startsWith('http') ? href : `${BASE}${href}`;
       let rawImgSrc = img.attr('src') || '';
       const logoUrl = rawImgSrc.startsWith('http') ? rawImgSrc : `${BASE}${rawImgSrc}`;
-      if (!channels.some(c => c.url === fullUrl)) channels.push({ name, url: fullUrl, logo: logoUrl });
+
+      if (!channels.some(c => c.url === fullUrl)) {
+        channels.push({ name, url: fullUrl, logo: logoUrl });
+      }
     }
   });
 
-  console.error(`Found ${channels.length} channels. Processing...`);
+  console.error(`Found ${channels.length} unique channels and ${schedules.length} schedules. Processing...\n`);
   const results = [];
 
   for (const ch of channels) {
     const p = await browser.newPage();
     let capturedM3u8 = null;
-    p.on('request', request => { if (request.url().includes('.m3u8')) capturedM3u8 = request.url(); });
+
+    p.on('request', request => {
+      const url = request.url();
+      if (url.includes('.m3u8')) {
+        capturedM3u8 = url;
+      }
+    });
 
     try {
       console.error(`Processing: ${ch.name}`);
@@ -88,12 +100,14 @@ async function main() {
           const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
           await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
           
-          // Wait for extension to solve Turnstile (up to 15 seconds)
+          // Wait 15 seconds for the extension to solve Turnstile
           await p.waitForTimeout(15000); 
           
           const pHtml = await p.content();
           const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
-          if (fMatch) playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
+          if (fMatch) {
+            playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
+          }
         }
       }
 
@@ -101,7 +115,10 @@ async function main() {
         const frames = p.frames();
         for (const frame of frames) {
           const fUrl = frame.url();
-          if (fUrl.includes('uembed.php') || fUrl.includes('player.php')) { playerUrl = fUrl; break; }
+          if (fUrl.includes('uembed.php') || fUrl.includes('player.php')) {
+            playerUrl = fUrl;
+            break;
+          }
         }
       }
 
@@ -117,10 +134,10 @@ async function main() {
       await p.close();
 
       if (capturedM3u8) {
-        console.error(`   [OK] Captured stream`);
+        console.error(`   [OK] Captured stream & source poster`);
         results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
       } else {
-        console.error(`   [Error] No m3u8 for ${ch.name}`);
+        console.error(`   [Error] No .m3u8 request intercepted for ${ch.name}`);
       }
     } catch (err) {
       await p.close();
@@ -132,6 +149,7 @@ async function main() {
 
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n`;
+
   for (const r of results) {
     playlistContent += `#EXTINF:-1 tvg-logo="${r.logo}" group-title="Sports", ${r.name}\n`;
     playlistContent += `#EXTVLCOPT:http-origin=https://bhalocast.com\n`;
@@ -139,9 +157,11 @@ async function main() {
     playlistContent += `#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\n`;
     playlistContent += `${r.m3u8}\n`;
   }
+
   fs.writeFileSync('playlist.m3u', playlistContent, 'utf8');
   fs.writeFileSync('schedule.json', JSON.stringify(schedules, null, 2), 'utf8');
-  console.error(`\nFinished! ${results.length} streams saved.`);
+
+  console.error(`\nFinished! Generated playlist.m3u with ${results.length} channels.`);
 }
 
 main();
