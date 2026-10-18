@@ -8,8 +8,15 @@ const PLAYER = 'https://playsza.st';
 async function main() {
   const PROXY = process.env.RESIDENTIAL_PROXY;
   
+  // If running on GitHub, we MUST have a proxy.
+  if (process.env.GITHUB_ACTIONS && !PROXY) {
+    console.error('FATAL: Running on GitHub Actions but RESIDENTIAL_PROXY is missing!');
+    console.error('Cloudflare will block GitHub datacenter IPs.');
+    process.exit(1);
+  }
+
   const launchOptions = {
-    headless: false, // Must be false for Cloudflare bypass
+    headless: false,
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -19,26 +26,21 @@ async function main() {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   };
 
-  // Configure Proxy if provided in GitHub Secrets
   if (PROXY) {
-    console.error('Proxy detected. Configuring proxy...');
+    console.error('Proxy detected. Configuring IPLoop...');
     const proxyUrl = new URL(PROXY);
     launchOptions.proxy = {
       server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
       username: proxyUrl.username || 'iploop', 
       password: proxyUrl.password
     };
-  } else {
-    console.error('No proxy detected. Running with local IP...');
   }
 
   console.error('Launching browser...');
   const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
-  
-  // Use the SAME page for everything to maintain the Cloudflare session
   const page = await browser.pages()[0] || await browser.newPage();
 
-  // Optimize loading by blocking heavy images/media (except logos)
+  // Block heavy images to speed up loading
   await page.route('**/*', route => {
     const type = route.request().resourceType();
     if (['image', 'media', 'font'].includes(type)) {
@@ -55,7 +57,7 @@ async function main() {
   console.error('Fetching CricHD homepage...');
   try {
     await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(3000); // Give Cloudflare time to auto-solve
+    await page.waitForTimeout(3000); // Give CF time to auto-solve
   } catch (err) {
     console.error('Failed to load homepage:', err.message);
     await browser.close();
@@ -67,18 +69,16 @@ async function main() {
   const channels = [];
   const schedules = [];
 
-  // 1. EXTRACT SCHEDULES
+  // Extract schedules
   $('table').find('tr').each((_, el) => {
     const $row = $(el);
     const league = $row.find('td').eq(1).text().trim();
     const title = $row.find('td').eq(2).text().trim();
     const time = $row.find('td').eq(3).text().trim().replace(/\s+/g, ' ');
-    if (title && league && time) {
-      schedules.push({ league, title, time });
-    }
+    if (title && league && time) schedules.push({ league, title, time });
   });
 
-  // 2. EXTRACT CHANNELS
+  // Extract channels
   $('a[href*="/channels/"]').each((_, el) => {
     const href = $(el).attr('href');
     const img = $(el).find('img[title]');
@@ -101,14 +101,11 @@ async function main() {
     console.error(`Processing: ${ch.name}`);
     let capturedM3u8 = null;
     
-    // Set up network sniffer for this channel
-    const requestHandler = req => { 
-      if (req.url().includes('.m3u8')) capturedM3u8 = req.url(); 
-    };
+    const requestHandler = req => { if (req.url().includes('.m3u8')) capturedM3u8 = req.url(); };
     page.on('request', requestHandler);
 
     try {
-      // 1. Load Channel Page
+      // 1. Channel Page
       await page.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(1500);
       
@@ -126,10 +123,10 @@ async function main() {
         continue; 
       }
 
-      // 2. Load Player Page in the SAME TAB
+      // 2. Player Page (Same Tab to keep cookies)
       await page.goto(`${PLAYER}/player.php?id=${playerId}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       
-      // CRITICAL: Wait 3 seconds to let Cloudflare finish its background checks
+      // CRITICAL: Wait for Cloudflare to finish
       await page.waitForTimeout(3000); 
       
       html = await page.content();
@@ -141,10 +138,10 @@ async function main() {
         continue; 
       }
 
-      // 3. Load uEmbed Page in the SAME TAB
+      // 3. uEmbed Page (Same Tab)
       await page.goto(`${PLAYER}/uembed.php?v=${fidMatch[1]}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-      // 4. Wait for the network sniffer to catch the m3u8
+      // 4. Sniff m3u8
       for (let i = 0; i < 10; i++) {
         if (capturedM3u8) break;
         await page.waitForTimeout(1000);
@@ -160,14 +157,11 @@ async function main() {
     } catch (err) {
       console.error(`   [Error] ${ch.name}: ${err.message}`);
     }
-    
-    // Remove sniffer for the next channel
     page.off('request', requestHandler);
   }
 
   await browser.close();
 
-  // Generate Output Files
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n`;
   for (const r of results) {
@@ -180,7 +174,7 @@ async function main() {
   fs.writeFileSync('playlist.m3u', playlistContent, 'utf8');
   fs.writeFileSync('schedule.json', JSON.stringify(schedules, null, 2), 'utf8');
 
-  console.error(`\nFinished! Saved playlist.m3u (${results.length} streams) and schedule.json (${schedules.length} matches).`);
+  console.error(`\nFinished! Saved playlist.m3u (${results.length} streams).`);
 }
 
 main().catch(err => {
