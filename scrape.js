@@ -1,51 +1,31 @@
 import { chromium } from 'rebrowser-playwright';
 import * as cheerio from 'cheerio';
-import readline from 'readline';
 import fs from 'fs';
 
 const BASE = 'https://crichd.mobile';
 const PLAYER = 'https://playsza.st';
 
-async function promptUser(query) {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  return new Promise(resolve => rl.question(query, ans => {
-    rl.close();
-    resolve(ans);
-  }));
-}
-
 async function main() {
-  console.error('Launching persistent browser session...');
+  console.log('Launching browser context for production CI...');
   
+  // Use headless: true and drop 'channel: 'chrome'' so it runs smoothly on GitHub Actions runners without an XServer
   const browser = await chromium.launchPersistentContext('./chrome-session', {
-    headless: false, // Set to true if running on a server/headless CI environment after initial cookie caching
-    channel: 'chrome', 
+    headless: true,
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
-      '--disable-dev-shm-usage'
+      '--disable-dev-shm-usage',
+      '--disable-gpu'
     ],
     viewport: { width: 1280, height: 720 }
   });
 
   const page = await browser.pages()[0] || await browser.newPage();
-  console.error('Fetching CricHD homepage...');
+  console.log('Fetching CricHD homepage...');
   
   try {
     await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    
-    let title = await page.title();
-    if (title.includes('Just a moment') || title.includes('Attention Required')) {
-      console.error('\n============================================================');
-      console.error('🛑 CLOUDFLARE DETECTED!');
-      console.error('👉 Please solve the verification manually in the browser window.');
-      console.error('👉 Once the homepage loads successfully, come back here and press ENTER.');
-      console.error('============================================================\n');
-      await promptUser('Press [Enter] after you have successfully passed Cloudflare... ');
-    }
+    await page.waitForTimeout(4000); // Allow scripts and headers to load
   } catch (err) {
     console.error('Failed to load homepage:', err.message);
     await browser.close();
@@ -56,7 +36,6 @@ async function main() {
   const $ = cheerio.load(homeHtml);
   const channels = [];
 
-  // Extract channel name, direct source page URL, and native asset logo/poster URL
   $('a[href*="/channels/"]').each((_, el) => {
     const href = $(el).attr('href');
     const img = $(el).find('img[title]');
@@ -72,7 +51,7 @@ async function main() {
     }
   });
 
-  console.error(`Found ${channels.length} unique channels with source posters. Monitoring network traffic...\n`);
+  console.log(`Found ${channels.length} unique channels. Monitoring network traffic...\n`);
   const results = [];
 
   for (const ch of channels) {
@@ -87,7 +66,7 @@ async function main() {
     });
 
     try {
-      console.error(`Processing: ${ch.name}`);
+      console.log(`Processing: ${ch.name}`);
       await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await p.waitForTimeout(1500);
 
@@ -126,7 +105,6 @@ async function main() {
         await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       }
 
-      // Allow sufficient time for stream manifest to register
       for (let i = 0; i < 10; i++) {
         if (capturedM3u8) break;
         await p.waitForTimeout(1000);
@@ -135,20 +113,20 @@ async function main() {
       await p.close();
 
       if (capturedM3u8) {
-        console.error(`   [OK] Captured stream & source poster`);
+        console.log(`   [OK] Captured stream`);
         results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
       } else {
-        console.error(`   [Error] No .m3u8 request intercepted for ${ch.name}`);
+        console.log(`   [Warning] No .m3u8 intercepted for ${ch.name}`);
       }
     } catch (err) {
       await p.close();
-      console.error(`   [Error] ${ch.name}: ${err.message}`);
+      console.log(`   [Error] ${ch.name}: ${err.message}`);
     }
   }
 
   await browser.close();
 
-  // Generate M3U playlist file content using source assets
+  // Generate M3U playlist file content with source logos and custom VLC options
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n`;
 
@@ -160,10 +138,8 @@ async function main() {
     playlistContent += `${r.m3u8}\n`;
   }
 
-  // Save directly to playlist.m3u
   fs.writeFileSync('playlist.m3u', playlistContent, 'utf8');
-
-  console.error(`\nFinished! Successfully generated playlist.m3u with ${results.length} channels using source web posters.`);
+  console.log(`\nFinished! Successfully generated playlist.m3u with ${results.length} channels.`);
 }
 
 main();
