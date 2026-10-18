@@ -9,16 +9,16 @@ async function main() {
   console.log('Launching robust stealth browser with IPLoop proxy support...');
   
   const proxyUrl = process.env.RESIDENTIAL_PROXY_URL;
-  let proxyConfig = undefined;
+  let proxyServer = undefined;
+  let proxyUsername = undefined;
+  let proxyPassword = undefined;
 
   if (proxyUrl) {
     try {
       const parsed = new URL(proxyUrl);
-      proxyConfig = {
-        server: `${parsed.protocol}//${parsed.hostname}:${parsed.port}`,
-        username: decodeURIComponent(parsed.username),
-        password: decodeURIComponent(parsed.password)
-      };
+      proxyServer = `${parsed.protocol}//${parsed.hostname}:${parsed.port}`;
+      proxyUsername = decodeURIComponent(parsed.username);
+      proxyPassword = decodeURIComponent(parsed.password);
       console.log(`[Proxy Configured] Routing traffic through IPLoop: ${parsed.hostname}:${parsed.port}`);
     } catch (e) {
       console.error('Invalid RESIDENTIAL_PROXY_URL format:', e.message);
@@ -47,11 +47,22 @@ async function main() {
     }
   };
 
-  if (proxyConfig) {
-    contextOptions.proxy = proxyConfig;
+  if (proxyServer) {
+    contextOptions.proxy = { server: proxyServer };
   }
 
   const context = await browser.newContext(contextOptions);
+
+  // Handle proxy authentication event natively across the context
+  if (proxyUsername && proxyPassword) {
+    context.on('auth', async (route) => {
+      await route.authenticate({
+        username: proxyUsername,
+        password: proxyPassword
+      });
+    });
+  }
+
   const page = await context.newPage();
   console.log('Fetching CricHD homepage...');
   
