@@ -1,8 +1,8 @@
-import axios from 'axios';
+import { chromium } from 'rebrowser-playwright';
 import fs from 'fs';
 import * as cheerio from 'cheerio';
 
-// Aapki di hui list
+// Aapki list
 const channelsData = [
   { name: "Willow Cricket", fid: "willow2c", logo: "https://crichd.mobile/assets/channels/willow.webp" },
   { name: "Willow 2", fid: "wextres5", logo: "https://crichd.mobile/assets/channels/willowextra.webp" },
@@ -26,52 +26,42 @@ const channelsData = [
 
 const PLAYER = 'https://playsza.st';
 
-async function fetchM3u8(channel) {
+async function fetchM3u8(page, channel) {
+  let capturedM3u8 = null;
+  
+  // Set up sniffer
+  const requestHandler = request => {
+    if (request.url().includes('.m3u8')) capturedM3u8 = request.url();
+  };
+  page.on('request', requestHandler);
+
   try {
-    const url = `${PLAYER}/uembed.php?v=${channel.fid}`;
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Referer': 'https://playsza.st/'
-      },
-      timeout: 10000
-    });
-
-    const html = response.data;
-
-    const directMatch = html.match(/https?:\/\/[^"'\s<>]+\.m3u8(?:\?[^"'\s<>]*)?/i);
-    if (directMatch) {
-      return directMatch[0];
+    // Load the uembed page directly
+    await page.goto(`${PLAYER}/uembed.php?v=${channel.fid}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    
+    // Wait up to 5 seconds for the m3u8 to be requested
+    for (let i = 0; i < 5; i++) {
+      if (capturedM3u8) break;
+      await page.waitForTimeout(1000);
     }
-
-    const baseMatch = html.match(/var\s+gTMjeSH\s*=\s*['"]([^'"]+)['"]/);
-    if (baseMatch) {
-      const md5Match = html.match(/md5=([^&'"]+)/);
-      const expiresMatch = html.match(/expires=([^&'"]+)/);
-      const sMatch = html.match(/&s=([^&'"]+)/);
-      const chMatch = html.match(/&ch=([^&'"]+)/);
-      
-      if (md5Match && expiresMatch && sMatch && chMatch) {
-        return `https://mz01.bhalocast.com:7060/hls/${channel.fid}.m3u8?md5=${md5Match[1]}&expires=${expiresMatch[1]}&ch=${chMatch[1]}&s=${sMatch[1]}`;
-      }
-    }
-
-    throw new Error('Could not extract m3u8 URL');
   } catch (err) {
-    console.error(`   [Error] ${channel.name}: ${err.message}`);
-    return null;
+    console.log(`   [Error] ${channel.name}: ${err.message}`);
+  } finally {
+    page.off('request', requestHandler);
   }
+
+  return capturedM3u8;
 }
 
 async function main() {
-  console.log('=== FETCHING M3U8 LINKS DIRECTLY ===');
+  console.log('=== FETCHING M3U8 LINKS VIA BROWSER (NO EXTENSION) ===');
   
+  // 1. Fetch schedules via simple HTTP (fast)
   let schedules = [];
   try {
-    const homeRes = await axios.get('https://crichd.mobile/', {
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    });
-    const $ = cheerio.load(homeRes.data);
+    const response = await fetch('https://crichd.mobile/');
+    const html = await response.text();
+    const $ = cheerio.load(html);
     $('table').find('tr').each((_, el) => {
       const $row = $(el);
       const league = $row.find('td').eq(1).text().trim();
@@ -80,22 +70,54 @@ async function main() {
       if (title && league && time) schedules.push({ league, title, time });
     });
   } catch (err) {
-    console.error('Failed to fetch schedules:', err.message);
+    console.log('Failed to fetch schedules:', err.message);
   }
+
+  // 2. Launch Chromium (No extension needed for uembed)
+  const browser = await chromium.launch({
+    headless: false,
+    channel: 'chromium',
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-sandbox',
+      '--disable-dev-shm-usage'
+    ],
+    viewport: { width: 1280, height: 720 }
+  });
+
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+  });
 
   const results = [];
 
-  const fetchPromises = channelsData.map(async (ch) => {
-    console.log(`Fetching: ${ch.name}`);
-    const m3u8 = await fetchM3u8(ch);
-    if (m3u8) {
-      console.log(`   [OK] ${ch.name}`);
-      results.push({ ...ch, m3u8 });
-    }
-  });
+  // 3. Process in batches of 3 to avoid getting blocked
+  const batchSize = 3;
+  for (let i = 0; i < channelsData.length; i += batchSize) {
+    const batch = channelsData.slice(i, i + batchSize);
+    
+    await Promise.all(batch.map(async (ch) => {
+      console.log(`Fetching: ${ch.name}`);
+      const page = await context.newPage();
+      
+      const m3u8 = await fetchM3u8(page, ch);
+      await page.close();
 
-  await Promise.all(fetchPromises);
+      if (m3u8) {
+        console.log(`   [OK] ${ch.name}`);
+        results.push({ ...ch, m3u8 });
+      } else {
+        console.log(`   [Error] No m3u8 for ${ch.name}`);
+      }
+    }));
 
+    // Small delay between batches
+    await new Promise(r => setTimeout(r, 2000));
+  }
+
+  await browser.close();
+
+  // 4. Generate M3U
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n\n`;
 
@@ -107,7 +129,6 @@ async function main() {
     playlistContent += `${r.m3u8}\n\n`;
   }
 
-  // ALL SCHEDULES IN ONE GROUP
   for (const s of schedules) {
     playlistContent += `#EXTINF:-1 group-title="Schedules", ${s.title} (${s.time})\n`;
     playlistContent += `https://crichd.mobile/\n\n`;
