@@ -8,7 +8,6 @@ const PLAYER = 'https://playsza.st';
 async function main() {
   console.log('Launching headless stealth browser for production...');
   
-  // Use non-persistent context configured for GitHub Actions CI environment
   const browser = await chromium.launch({
     headless: true,
     args: [
@@ -30,7 +29,7 @@ async function main() {
   
   try {
     await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(3000); // Allow any minor challenge script to resolve
+    await page.waitForTimeout(4000); // Allow Cloudflare JS challenge to resolve in headless mode
   } catch (err) {
     console.error('Failed to load homepage:', err.message);
     await browser.close();
@@ -56,7 +55,7 @@ async function main() {
     }
   });
 
-  console.log(`Found ${channels.length} channels. Extracting streams concurrently/safely...\n`);
+  console.log(`Found ${channels.length} channels. Extracting streams...\n`);
   const results = [];
 
   for (const ch of channels) {
@@ -73,7 +72,7 @@ async function main() {
     try {
       console.log(`Processing: ${ch.name}`);
       await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(1000);
+      await p.waitForTimeout(2000);
 
       const channelHtml = await p.content();
       let playerUrl = '';
@@ -86,7 +85,7 @@ async function main() {
         if (match) {
           const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
           await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          await p.waitForTimeout(2000);
+          await p.waitForTimeout(3000);
           const pHtml = await p.content();
           const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
           if (fMatch) {
@@ -110,8 +109,8 @@ async function main() {
         await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
       }
 
-      // Wait for stream to fire
-      for (let i = 0; i < 5; i++) {
+      // Wait up to 15 seconds for the player to initialize and trigger the .m3u8 request
+      for (let i = 0; i < 15; i++) {
         if (capturedM3u8) break;
         await p.waitForTimeout(1000);
       }
