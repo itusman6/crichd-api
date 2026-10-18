@@ -1,150 +1,104 @@
-import { chromium } from 'rebrowser-playwright';
-import * as cheerio from 'cheerio';
+import axios from 'axios';
 import fs from 'fs';
-import path from 'path';
+import * as cheerio from 'cheerio';
 
-const BASE = 'https://crichd.mobile';
+// Aapki di hui list
+const channelsData = [
+  { name: "Willow Cricket", fid: "willow2c", logo: "https://crichd.mobile/assets/channels/willow.webp" },
+  { name: "Willow 2", fid: "wextres5", logo: "https://crichd.mobile/assets/channels/willowextra.webp" },
+  { name: "Star Sports 1", fid: "star1kibich5", logo: "https://crichd.mobile/assets/channels/star1.webp" },
+  { name: "Star Sports 1 Hindi", fid: "star4b", logo: "https://crichd.mobile/assets/channels/starhindi.webp" },
+  { name: "Star Sports 2", fid: "star2u", logo: "https://crichd.mobile/assets/channels/star2.webp" },
+  { name: "PTV Sports", fid: "ptvskpr", logo: "https://crichd.mobile/assets/channels/ptv.webp" },
+  { name: "A Sports", fid: "asports3c", logo: "https://crichd.mobile/assets/channels/asports.webp" },
+  { name: "Ten Sports", fid: "tenspk", logo: "https://crichd.mobile/assets/channels/tensp.webp" },
+  { name: "Geo Super", fid: "geosp", logo: "https://crichd.mobile/assets/channels/geosp.webp" },
+  { name: "T Sports HD", fid: "gtvbd", logo: "https://crichd.mobile/assets/channels/tsports.webp" },
+  { name: "Astro Cricket", fid: "astro2v", logo: "https://crichd.mobile/assets/channels/astrocric.webp" },
+  { name: "Sony Sports Ten 5", fid: "sony5c", logo: "https://crichd.mobile/assets/channels/ten5.webp" },
+  { name: "Sony Sports Ten 1", fid: "sony1c", logo: "https://crichd.mobile/assets/channels/ten1.webp" },
+  { name: "Sony Sports Ten 2", fid: "ten2endia", logo: "https://crichd.mobile/assets/channels/ten2.webp" },
+  { name: "Sony Sports Ten 3", fid: "sony3c", logo: "https://crichd.mobile/assets/channels/ten3.webp" },
+  { name: "Criclife 1", fid: "criclife1", logo: "https://crichd.mobile/assets/channels/cl1.webp" },
+  { name: "Criclife 2", fid: "criclife2", logo: "https://crichd.mobile/assets/channels/cl2.webp" },
+  { name: "Criclife 3", fid: "criclife3", logo: "https://crichd.mobile/assets/channels/cl3.webp" }
+];
+
 const PLAYER = 'https://playsza.st';
 
-async function main() {
-  console.error('=== PHASE 1: FETCHING CHANNELS ===');
-  
-  const browser1 = await chromium.launch({ headless: true });
-  const page1 = await browser1.newPage();
-  await page1.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  const homeHtml = await page1.content();
-  const $ = cheerio.load(homeHtml);
-  
-  const channels = [];
-  const schedules = [];
-
-  // Schedules Extract
-  $('table').find('tr').each((_, el) => {
-    const $row = $(el);
-    const league = $row.find('td').eq(1).text().trim();
-    const title = $row.find('td').eq(2).text().trim();
-    const time = $row.find('td').eq(3).text().trim().replace(/\s+/g, ' ');
-    if (title && league && time) schedules.push({ league, title, time });
-  });
-
-  // Channels Extract
-  $('a[href*="/channels/"]').each((_, el) => {
-    const href = $(el).attr('href');
-    const img = $(el).find('img[title]');
-    if (img.length && href) {
-      const name = img.attr('title').replace(/\s+Live Streaming.*$/i, '').trim();
-      const fullUrl = href.startsWith('http') ? href : `${BASE}${href}`;
-      let rawImgSrc = img.attr('src') || '';
-      const logoUrl = rawImgSrc.startsWith('http') ? rawImgSrc : `${BASE}${rawImgSrc}`;
-      if (!channels.some(c => c.name === name)) {
-        channels.push({ name, channelUrl: fullUrl, logo: logoUrl });
-      }
-    }
-  });
-  
-  await browser1.close();
-  console.error(`Found ${channels.length} channels and ${schedules.length} schedules.`);
-
-  const browser2 = await chromium.launch({ headless: true });
-  const page2 = await browser2.newPage();
-  const validChannels = [];
-  
-  for (const ch of channels) {
-    try {
-      await page2.goto(ch.channelUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      const cHtml = await page2.content();
-      let playerUrl = '';
-      if (cHtml.includes('uembed.php?v=')) {
-        const match = cHtml.match(/uembed\.php\?v=([A-Za-z0-9_-]+)/);
-        if (match) playerUrl = `${PLAYER}/uembed.php?v=${match[1]}`;
-      } else if (cHtml.includes('player.php?id=')) {
-        const match = cHtml.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
-        if (match) playerUrl = `${PLAYER}/player.php?id=${match[1]}`;
-      }
-      if (playerUrl) {
-        validChannels.push({ ...ch, playerUrl });
-        console.log(`   [+] ${ch.name}`);
-      }
-    } catch (e) {
-      console.log(`   [!] Error on ${ch.name}`);
-    }
-  }
-  await browser2.close();
-
-  console.error(`\n=== PHASE 2: OPENING FRESH SESSIONS ===`);
-  
-  const results = [];
-  const extensionPath = path.resolve('./turnstile-solver');
-
-  for (const ch of validChannels) {
-    console.error(`\nProcessing: ${ch.name}`);
-    let capturedM3u8 = null;
-
-    const browser = await chromium.launchPersistentContext(`./session-${ch.name.replace(/[^a-z0-9]/gi, '')}`, {
-      headless: false,
-      channel: 'chromium',
-      args: [
-        '--disable-blink-features=AutomationControlled',
-        '--no-sandbox',
-        '--disable-dev-shm-usage',
-        `--disable-extensions-except=${extensionPath}`,
-        `--load-extension=${extensionPath}`
-      ],
-      viewport: { width: 1280, height: 720 }
+async function fetchM3u8(channel) {
+  try {
+    const url = `${PLAYER}/uembed.php?v=${channel.fid}`;
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Referer': 'https://playsza.st/'
+      },
+      timeout: 10000
     });
 
-    const p = await browser.pages()[0] || await browser.newPage();
+    const html = response.data;
 
-    p.on('request', request => {
-      if (request.url().includes('.m3u8')) capturedM3u8 = request.url();
-    });
+    const directMatch = html.match(/https?:\/\/[^"'\s<>]+\.m3u8(?:\?[^"'\s<>]*)?/i);
+    if (directMatch) {
+      return directMatch[0];
+    }
 
-    try {
-      console.error(`   -> Opening: ${ch.playerUrl}`);
-      await p.goto(ch.playerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const baseMatch = html.match(/var\s+gTMjeSH\s*=\s*['"]([^'"]+)['"]/);
+    if (baseMatch) {
+      const md5Match = html.match(/md5=([^&'"]+)/);
+      const expiresMatch = html.match(/expires=([^&'"]+)/);
+      const sMatch = html.match(/&s=([^&'"]+)/);
+      const chMatch = html.match(/&ch=([^&'"]+)/);
       
-      console.error(`   -> Waiting 18s for Turnstile solver...`);
-      await p.waitForTimeout(18000);
-
-      let targetUrl = ch.playerUrl;
-
-      if (ch.playerUrl.includes('player.php')) {
-        const pHtml = await p.content();
-        const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
-        
-        if (fMatch) {
-          targetUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
-          console.error(`   -> Found fid: ${fMatch[1]}`);
-          await p.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        } else {
-          console.error(`   -> [Error] Cloudflare still blocking.`);
-        }
+      if (md5Match && expiresMatch && sMatch && chMatch) {
+        return `https://mz01.bhalocast.com:7060/hls/${channel.fid}.m3u8?md5=${md5Match[1]}&expires=${expiresMatch[1]}&ch=${chMatch[1]}&s=${sMatch[1]}`;
       }
-
-      for (let i = 0; i < 20; i++) {
-        if (capturedM3u8) break;
-        await p.waitForTimeout(1000);
-      }
-
-      if (capturedM3u8) {
-        console.error(`   [OK] Captured!`);
-        results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
-      } else {
-        console.error(`   [Error] No m3u8.`);
-      }
-
-    } catch (err) {
-      console.error(`   [Error] ${err.message}`);
-    } finally {
-      await browser.close();
     }
+
+    throw new Error('Could not extract m3u8 URL');
+  } catch (err) {
+    console.error(`   [Error] ${channel.name}: ${err.message}`);
+    return null;
+  }
+}
+
+async function main() {
+  console.log('=== FETCHING M3U8 LINKS DIRECTLY ===');
+  
+  let schedules = [];
+  try {
+    const homeRes = await axios.get('https://crichd.mobile/', {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    const $ = cheerio.load(homeRes.data);
+    $('table').find('tr').each((_, el) => {
+      const $row = $(el);
+      const league = $row.find('td').eq(1).text().trim();
+      const title = $row.find('td').eq(2).text().trim();
+      const time = $row.find('td').eq(3).text().trim().replace(/\s+/g, ' ');
+      if (title && league && time) schedules.push({ league, title, time });
+    });
+  } catch (err) {
+    console.error('Failed to fetch schedules:', err.message);
   }
 
-  // Generate M3U with Groups
+  const results = [];
+
+  const fetchPromises = channelsData.map(async (ch) => {
+    console.log(`Fetching: ${ch.name}`);
+    const m3u8 = await fetchM3u8(ch);
+    if (m3u8) {
+      console.log(`   [OK] ${ch.name}`);
+      results.push({ ...ch, m3u8 });
+    }
+  });
+
+  await Promise.all(fetchPromises);
+
   let playlistContent = '#EXTM3U\n';
   playlistContent += `# Generated: ${new Date().toISOString()}\n\n`;
 
-  // 1. Channels Group
   for (const r of results) {
     playlistContent += `#EXTINF:-1 tvg-logo="${r.logo}" group-title="24/7 Channels", ${r.name}\n`;
     playlistContent += `#EXTVLCOPT:http-origin=https://bhalocast.com\n`;
@@ -153,15 +107,14 @@ async function main() {
     playlistContent += `${r.m3u8}\n\n`;
   }
 
-  // 2. Schedules Group (Adding schedules as M3U entries with channel link)
+  // ALL SCHEDULES IN ONE GROUP
   for (const s of schedules) {
-    playlistContent += `#EXTINF:-1 group-title="${s.league} Schedule", ${s.title} (${s.time})\n`;
-    // Since schedule doesn't have a direct stream, we link to the channel page as a fallback
-    playlistContent += `${BASE}/\n\n`;
+    playlistContent += `#EXTINF:-1 group-title="Schedules", ${s.title} (${s.time})\n`;
+    playlistContent += `https://crichd.mobile/\n\n`;
   }
 
   fs.writeFileSync('playlist.m3u', playlistContent, 'utf8');
-  console.error(`\nDone! Generated playlist.m3u with ${results.length} streams and ${schedules.length} schedules.`);
+  console.log(`\nDone! Generated playlist.m3u with ${results.length} streams and ${schedules.length} schedules.`);
 }
 
 main();
