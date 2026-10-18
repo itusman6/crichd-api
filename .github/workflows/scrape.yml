@@ -1,4 +1,4 @@
-name: CricHD Playlist and Schedules
+name: CricHD Playlist
 
 on:
   schedule:
@@ -8,7 +8,7 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 120 # Increased timeout because we open a fresh browser for each channel
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4
@@ -18,14 +18,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb google-chrome-stable unzip wget
 
-      - name: Download Turnstile Solver Extension
+      - name: Download NullFlare Turnstile Solver
         run: |
-          wget -O extension.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=120.0&acceptformat=crx2,crx3&x=id%3Dijmhjekchmipnifjiahkapifokdffffo%26uc"
-          unzip -o extension.crx -d turnstile-solver || true
-          if [ ! -f "turnstile-solver/manifest.json" ]; then
-            echo "ERROR: Extraction failed."
+          # NullFlare Extension ID: dfmkjkikfljendhmfnlflfbfjabdbhbk
+          wget -O nullflare.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=130.0&acceptformat=crx2,crx3&x=id%3Ddfmkjkikfljendhmfnlflfbfjabdbhbk%26uc"
+          unzip -o nullflare.crx -d nullflare-solver || true
+          if [ ! -f "nullflare-solver/manifest.json" ]; then
+            echo "ERROR: NullFlare extraction failed."
             exit 1
           fi
+          echo "NullFlare extracted."
 
       - uses: actions/setup-node@v4
         with:
@@ -41,18 +43,13 @@ jobs:
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
             node scrape.js
-            
-          echo "--- Playlist Preview ---"
-          head -n 10 playlist.m3u || true
 
-      - name: Upload Playlist Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: crichd-playlist
+          name: playlist
           path: playlist.m3u
 
-      - name: Upload Schedule Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: crichd-schedule
+          name: schedule
           path: schedule.json
