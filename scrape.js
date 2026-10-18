@@ -18,6 +18,7 @@ async function main() {
   const channels = [];
   const schedules = [];
 
+  // Schedules Extract
   $('table').find('tr').each((_, el) => {
     const $row = $(el);
     const league = $row.find('td').eq(1).text().trim();
@@ -26,6 +27,7 @@ async function main() {
     if (title && league && time) schedules.push({ league, title, time });
   });
 
+  // Channels Extract
   $('a[href*="/channels/"]').each((_, el) => {
     const href = $(el).attr('href');
     const img = $(el).find('img[title]');
@@ -41,7 +43,7 @@ async function main() {
   });
   
   await browser1.close();
-  console.error(`Found ${channels.length} channels.`);
+  console.error(`Found ${channels.length} channels and ${schedules.length} schedules.`);
 
   const browser2 = await chromium.launch({ headless: true });
   const page2 = await browser2.newPage();
@@ -78,10 +80,9 @@ async function main() {
     console.error(`\nProcessing: ${ch.name}`);
     let capturedM3u8 = null;
 
-    // Use Chromium channel, NOT Edge, NOT Chrome
     const browser = await chromium.launchPersistentContext(`./session-${ch.name.replace(/[^a-z0-9]/gi, '')}`, {
       headless: false,
-      channel: 'chromium', // IMPORTANT: Use bundled Chromium for extension support
+      channel: 'chromium',
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -102,7 +103,6 @@ async function main() {
       console.error(`   -> Opening: ${ch.playerUrl}`);
       await p.goto(ch.playerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       
-      // Wait 40 seconds for Raptor extension to solve Cloudflare Turnstile
       console.error(`   -> Waiting 40s for Turnstile solver...`);
       await p.waitForTimeout(40000);
 
@@ -140,18 +140,28 @@ async function main() {
     }
   }
 
+  // Generate M3U with Groups
   let playlistContent = '#EXTM3U\n';
-  playlistContent += `# Generated: ${new Date().toISOString()}\n`;
+  playlistContent += `# Generated: ${new Date().toISOString()}\n\n`;
+
+  // 1. Channels Group
   for (const r of results) {
-    playlistContent += `#EXTINF:-1 tvg-logo="${r.logo}" group-title="Sports", ${r.name}\n`;
+    playlistContent += `#EXTINF:-1 tvg-logo="${r.logo}" group-title="24/7 Channels", ${r.name}\n`;
     playlistContent += `#EXTVLCOPT:http-origin=https://bhalocast.com\n`;
     playlistContent += `#EXTVLCOPT:http-referrer=https://bhalocast.com/\n`;
     playlistContent += `#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\n`;
-    playlistContent += `${r.m3u8}\n`;
+    playlistContent += `${r.m3u8}\n\n`;
   }
+
+  // 2. Schedules Group (Adding schedules as M3U entries with channel link)
+  for (const s of schedules) {
+    playlistContent += `#EXTINF:-1 group-title="${s.league} Schedule", ${s.title} (${s.time})\n`;
+    // Since schedule doesn't have a direct stream, we link to the channel page as a fallback
+    playlistContent += `${BASE}/\n\n`;
+  }
+
   fs.writeFileSync('playlist.m3u', playlistContent, 'utf8');
-  fs.writeFileSync('schedule.json', JSON.stringify(schedules, null, 2), 'utf8');
-  console.error(`\nDone! ${results.length} streams.`);
+  console.error(`\nDone! Generated playlist.m3u with ${results.length} streams and ${schedules.length} schedules.`);
 }
 
 main();
