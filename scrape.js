@@ -6,18 +6,10 @@ const BASE = 'https://crichd.mobile';
 const PLAYER = 'https://playsza.st';
 
 async function main() {
-  console.log('Launching robust stealth browser with IPLoop proxy support...');
+  const PROXY = process.env.RESIDENTIAL_PROXY;
   
-  const proxyUrl = process.env.RESIDENTIAL_PROXY_URL;
-  let proxyConfig = undefined;
-
-  if (proxyUrl) {
-    proxyConfig = { server: proxyUrl.trim() };
-    console.log('[Proxy Configured] Routing traffic through IPLoop proxy.');
-  }
-
-  const browserOptions = {
-    headless: true,
+  const launchOptions = {
+    headless: false, // MUST BE FALSE
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -26,35 +18,54 @@ async function main() {
       '--disable-gpu',
       '--ignore-certificate-errors',
       '--window-size=1920,1080'
-    ]
+    ],
+    viewport: { width: 1920, height: 1080 },
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   };
 
-  if (proxyConfig) {
-    browserOptions.proxy = proxyConfig;
+  // PROXY FIX: Parse credentials and inject directly to Chromium args
+  if (PROXY) {
+    console.error('[Proxy Configured] Parsing credentials...');
+    const proxyUrl = new URL(PROXY);
+    let pUser = proxyUrl.username;
+    let pPass = proxyUrl.password;
+
+    if (!pUser && pPass) {
+      pUser = pPass;
+      pPass = '';
+    }
+
+    const authString = pUser ? (pPass ? `${pUser}:${pPass}@` : `${pUser}@`) : '';
+    const proxyServer = `${proxyUrl.protocol}//${authString}${proxyUrl.hostname}:${proxyUrl.port}`;
+
+    launchOptions.args.push(`--proxy-server=${proxyServer}`);
+    console.error(`[Proxy Configured] Routing via: ${proxyUrl.hostname}:${proxyUrl.port}`);
   }
 
-  const browser = await chromium.launch(browserOptions);
+  console.error('Launching browser...');
+  const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
+  const page = await browser.pages()[0] || await browser.newPage();
 
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    viewport: { width: 1920, height: 1080 },
-    locale: 'en-US',
-    extraHTTPHeaders: {
-      'Accept-Language': 'en-US,en;q=0.9'
+  // Block heavy images to speed up
+  await page.route('**/*', route => {
+    const type = route.request().resourceType();
+    if (['image', 'media', 'font'].includes(type)) {
+      if (!route.request().url().includes('/assets/channels/')) {
+        route.abort();
+      } else {
+        route.continue();
+      }
+    } else {
+      route.continue();
     }
   });
 
-  const page = await context.newPage();
-  page.setDefaultNavigationTimeout(90000);
-
-  console.log('Fetching CricHD homepage via proxy...');
-  
+  console.error('Fetching CricHD homepage...');
   try {
-    await page.goto(BASE, { waitUntil: 'commit', timeout: 90000 });
-    await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
-    await page.waitForTimeout(5000); // Give extra time for full DOM rendering through proxy
+    await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    await page.waitForTimeout(5000); 
   } catch (err) {
-    console.error('Failed to load homepage through proxy:', err.message);
+    console.error('Failed to load homepage:', err.message);
     await browser.close();
     process.exit(1);
   }
@@ -62,14 +73,24 @@ async function main() {
   const homeHtml = await page.content();
   const $ = cheerio.load(homeHtml);
   const channels = [];
+  const schedules = [];
 
-  // Flexible selector to catch channels from sidebar/menu lists
-  $('a[href*="/channels/"], #cssmenu a, .sidebar-menu a').each((_, el) => {
+  // Extract Schedules
+  $('table').find('tr').each((_, el) => {
+    const $row = $(el);
+    const league = $row.find('td').eq(1).text().trim();
+    const title = $row.find('td').eq(2).text().trim();
+    const time = $row.find('td').eq(3).text().trim().replace(/\s+/g, ' ');
+    if (title && league && time) schedules.push({ league, title, time });
+  });
+
+  // Extract Channels
+  $('a[href*="/channels/"]').each((_, el) => {
     const href = $(el).attr('href');
     const img = $(el).find('img[title], img[alt]');
     const titleAttr = $(el).attr('title') || img.attr('title') || img.attr('alt');
     
-    if (href && href.includes('/channels/') && titleAttr) {
+    if (href && titleAttr) {
       const name = titleAttr.replace(/\s+Live Streaming.*$/i, '').trim();
       const fullUrl = href.startsWith('http') ? href : `${BASE}${href}`;
       let rawImgSrc = img.attr('src') || '';
@@ -81,85 +102,61 @@ async function main() {
     }
   });
 
-  console.log(`Found ${channels.length} channels. Extracting streams...\n`);
+  console.error(`Found ${channels.length} channels and ${schedules.length} schedule entries.`);
+  
   const results = [];
 
   for (const ch of channels) {
     let capturedM3u8 = null;
-    let attempts = 0;
+    const p = await browser.newPage();
 
-    while (!capturedM3u8 && attempts < 2) {
-      attempts++;
-      const p = await context.newPage();
-      p.setDefaultNavigationTimeout(60000);
+    p.on('request', request => {
+      if (request.url().includes('.m3u8')) capturedM3u8 = request.url();
+    });
 
-      p.on('request', request => {
-        const url = request.url();
-        if (url.includes('.m3u8')) {
-          capturedM3u8 = url;
+    try {
+      console.error(`Processing: ${ch.name}`);
+      await p.goto(ch.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await p.waitForTimeout(1500);
+
+      const channelHtml = await p.content();
+      let playerUrl = '';
+      
+      if (channelHtml.includes('uembed.php?v=')) {
+        const match = channelHtml.match(/uembed\.php\?v=([A-Za-z0-9_-]+)/);
+        if (match) playerUrl = `${PLAYER}/uembed.php?v=${match[1]}`;
+      } else if (channelHtml.includes('player.php?id=')) {
+        const match = channelHtml.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
+        if (match) {
+          const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
+          await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+          await p.waitForTimeout(3000); // Wait for CF
+          const pHtml = await p.content();
+          const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
+          if (fMatch) playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
         }
-      });
-
-      try {
-        console.log(`Processing: ${ch.name} (Attempt ${attempts})`);
-        await p.goto(ch.url, { waitUntil: 'commit', timeout: 60000 });
-        await p.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
-        await p.waitForTimeout(1500);
-
-        const channelHtml = await p.content();
-        let playerUrl = '';
-        
-        if (channelHtml.includes('uembed.php?v=')) {
-          const match = channelHtml.match(/uembed\.php\?v=([A-Za-z0-9_-]+)/);
-          if (match) playerUrl = `${PLAYER}/uembed.php?v=${match[1]}`;
-        } else if (channelHtml.includes('player.php?id=')) {
-          const match = channelHtml.match(/player\.php\?id=([A-Za-z0-9_-]+)/);
-          if (match) {
-            const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
-            await p.goto(pPageUrl, { waitUntil: 'commit', timeout: 60000 });
-            await p.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
-            await p.waitForTimeout(2000);
-            const pHtml = await p.content();
-            const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
-            if (fMatch) {
-              playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
-            }
-          }
-        }
-
-        if (!playerUrl) {
-          const frames = p.frames();
-          for (const frame of frames) {
-            const fUrl = frame.url();
-            if (fUrl.includes('uembed.php') || fUrl.includes('player.php')) {
-              playerUrl = fUrl;
-              break;
-            }
-          }
-        }
-
-        if (playerUrl && !p.url().includes(playerUrl)) {
-          await p.goto(playerUrl, { waitUntil: 'commit', timeout: 60000 });
-          await p.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
-        }
-
-        for (let i = 0; i < 12; i++) {
-          if (capturedM3u8) break;
-          await p.waitForTimeout(1000);
-        }
-
-        await p.close();
-      } catch (err) {
-        await p.close();
-        console.log(`   [Error on attempt ${attempts}] ${ch.name}: ${err.message}`);
       }
-    }
 
-    if (capturedM3u8) {
-      console.log(`   [OK] Captured stream for ${ch.name}`);
-      results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
-    } else {
-      console.log(`   [Warning] Failed to intercept .m3u8 for ${ch.name}`);
+      if (playerUrl) {
+        await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      }
+
+      for (let i = 0; i < 10; i++) {
+        if (capturedM3u8) break;
+        await p.waitForTimeout(1000);
+      }
+
+      await p.close();
+
+      if (capturedM3u8) {
+        console.error(`   [OK] Captured stream for ${ch.name}`);
+        results.push({ name: ch.name, logo: ch.logo, m3u8: capturedM3u8 });
+      } else {
+        console.error(`   [Error] Failed to intercept .m3u8 for ${ch.name}`);
+      }
+    } catch (err) {
+      await p.close();
+      console.error(`   [Error] ${ch.name}: ${err.message}`);
     }
   }
 
@@ -177,7 +174,12 @@ async function main() {
   }
 
   fs.writeFileSync('playlist.m3u', playlistContent, 'utf8');
-  console.log(`\nFinished! Successfully generated playlist.m3u with ${results.length} channels.`);
+  fs.writeFileSync('schedule.json', JSON.stringify(schedules, null, 2), 'utf8');
+  
+  console.error(`\nFinished! Generated playlist.m3u with ${results.length} streams.`);
 }
 
-main();
+main().catch(err => {
+  console.error(err);
+  process.exit(1);
+});
