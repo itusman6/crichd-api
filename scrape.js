@@ -23,9 +23,9 @@ async function main() {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   };
 
-  // PROXY FIX: Correctly parse and inject authentication into Chromium proxy server argument
+  // NATIVE PLAYWRIGHT PROXY CONFIGURATION
   if (PROXY) {
-    console.error('[Proxy Configured] Parsing credentials...');
+    console.error('[Proxy Configured] Parsing credentials for Playwright proxy object...');
     try {
       const proxyUrl = new URL(PROXY);
       let pUser = proxyUrl.username;
@@ -36,10 +36,12 @@ async function main() {
         pPass = '';
       }
 
-      const authString = pUser ? (pPass ? `${pUser}:${pPass}@` : `${pUser}@`) : '';
-      const proxyServer = `${proxyUrl.protocol}//${authString}${proxyUrl.hostname}:${proxyUrl.port}`;
-
-      launchOptions.args.push(`--proxy-server=${proxyServer}`);
+      launchOptions.proxy = {
+        server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
+        username: decodeURIComponent(pUser),
+        password: decodeURIComponent(pPass)
+      };
+      
       console.error(`[Proxy Configured] Routing via: ${proxyUrl.hostname}:${proxyUrl.port}`);
     } catch (e) {
       console.error('[Proxy Error] Failed to parse RESIDENTIAL_PROXY URL:', e.message);
@@ -50,7 +52,7 @@ async function main() {
   const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
   const page = await browser.pages()[0] || await browser.newPage();
 
-  // Safely route resources (only block heavy static media/fonts, keep scripts & XHR)
+  // Safely route resources (only block heavy static media/fonts)
   await page.route('**/*', route => {
     const type = route.request().resourceType();
     if (['media', 'font'].includes(type)) {
