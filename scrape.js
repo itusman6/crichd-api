@@ -136,10 +136,10 @@ async function main() {
 
   // 1. Channels Group
   for (const r of results) {
-    playlistContent += `#EXTINF:-1 tvg-logo="${r.logo}" group-title="24/7 Channels", ${r.name}\n`;
+    playlistContent += `#EXTINF:-1 tvg-logo="${r.logo}" group-title="24/7 Channels",${r.name}\n`;
     playlistContent += `#EXTVLCOPT:http-origin=https://playsza.st\n`;
     playlistContent += `#EXTVLCOPT:http-referrer=https://playsza.st/\n`;
-    playlistContent += `#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\n`;
+    playlistContent += `#EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36\n`;
     playlistContent += `${r.m3u8}\n\n`;
   }
 
