@@ -30,7 +30,7 @@ jobs:
 
       - name: Run scraper
         run: |
-          # Running without any proxy environment variables
+          # Since no proxy is used, we run without any RESIDENTIAL_PROXY env variable
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
             node scrape.js
             
