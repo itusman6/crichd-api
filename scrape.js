@@ -8,8 +8,7 @@ const PLAYER = 'https://playsza.st';
 async function main() {
   const PROXY = process.env.RESIDENTIAL_PROXY;
   
-  console.error('Launching browser...');
-  const browser = await chromium.launch({
+  const launchOptions = {
     headless: false, // Required when running with Xvfb in GitHub Actions
     args: [
       '--disable-blink-features=AutomationControlled',
@@ -20,16 +19,11 @@ async function main() {
       '--ignore-certificate-errors',
       '--window-size=1920,1080'
     ]
-  });
-
-  const contextOptions = {
-    viewport: { width: 1920, height: 1080 },
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   };
 
-  // NATIVE PLAYWRIGHT CONTEXT PROXY CONFIGURATION
+  // CORRECT: Proxy configuration must be passed at browser launch in Playwright
   if (PROXY) {
-    console.error('[Proxy Configured] Parsing credentials for context proxy...');
+    console.error('[Proxy Configured] Parsing credentials for browser launch proxy...');
     try {
       const proxyUrl = new URL(PROXY);
       let pUser = proxyUrl.username;
@@ -40,7 +34,7 @@ async function main() {
         pPass = '';
       }
 
-      contextOptions.proxy = {
+      launchOptions.proxy = {
         server: `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`,
         username: decodeURIComponent(pUser),
         password: decodeURIComponent(pPass)
@@ -52,7 +46,14 @@ async function main() {
     }
   }
 
-  const context = await browser.newContext(contextOptions);
+  console.error('Launching browser...');
+  const browser = await chromium.launch(launchOptions);
+
+  const context = await browser.newContext({
+    viewport: { width: 1920, height: 1080 },
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+  });
+
   const page = await context.newPage();
 
   // Safely route resources (only block heavy static media/fonts)
