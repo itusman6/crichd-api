@@ -9,7 +9,7 @@ async function main() {
   const PROXY = process.env.RESIDENTIAL_PROXY;
   
   const launchOptions = {
-    headless: false, // MUST BE FALSE
+    headless: false, // Required when running with Xvfb in GitHub Actions
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -23,38 +23,38 @@ async function main() {
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   };
 
-  // PROXY FIX: Parse credentials and inject directly to Chromium args
+  // PROXY FIX: Correctly parse and inject authentication into Chromium proxy server argument
   if (PROXY) {
     console.error('[Proxy Configured] Parsing credentials...');
-    const proxyUrl = new URL(PROXY);
-    let pUser = proxyUrl.username;
-    let pPass = proxyUrl.password;
+    try {
+      const proxyUrl = new URL(PROXY);
+      let pUser = proxyUrl.username;
+      let pPass = proxyUrl.password;
 
-    if (!pUser && pPass) {
-      pUser = pPass;
-      pPass = '';
+      if (!pUser && pPass) {
+        pUser = pPass;
+        pPass = '';
+      }
+
+      const authString = pUser ? (pPass ? `${pUser}:${pPass}@` : `${pUser}@`) : '';
+      const proxyServer = `${proxyUrl.protocol}//${authString}${proxyUrl.hostname}:${proxyUrl.port}`;
+
+      launchOptions.args.push(`--proxy-server=${proxyServer}`);
+      console.error(`[Proxy Configured] Routing via: ${proxyUrl.hostname}:${proxyUrl.port}`);
+    } catch (e) {
+      console.error('[Proxy Error] Failed to parse RESIDENTIAL_PROXY URL:', e.message);
     }
-
-    const authString = pUser ? (pPass ? `${pUser}:${pPass}@` : `${pUser}@`) : '';
-    const proxyServer = `${proxyUrl.protocol}//${authString}${proxyUrl.hostname}:${proxyUrl.port}`;
-
-    launchOptions.args.push(`--proxy-server=${proxyServer}`);
-    console.error(`[Proxy Configured] Routing via: ${proxyUrl.hostname}:${proxyUrl.port}`);
   }
 
   console.error('Launching browser...');
   const browser = await chromium.launchPersistentContext('./chrome-session', launchOptions);
   const page = await browser.pages()[0] || await browser.newPage();
 
-  // Block heavy images to speed up
+  // Safely route resources (only block heavy static media/fonts, keep scripts & XHR)
   await page.route('**/*', route => {
     const type = route.request().resourceType();
-    if (['image', 'media', 'font'].includes(type)) {
-      if (!route.request().url().includes('/assets/channels/')) {
-        route.abort();
-      } else {
-        route.continue();
-      }
+    if (['media', 'font'].includes(type)) {
+      route.abort();
     } else {
       route.continue();
     }
@@ -77,7 +77,7 @@ async function main() {
 
   // Extract Schedules
   $('table').find('tr').each((_, el) => {
-    const $row = $(el);
+    const $row =$(el);
     const league = $row.find('td').eq(1).text().trim();
     const title = $row.find('td').eq(2).text().trim();
     const time = $row.find('td').eq(3).text().trim().replace(/\s+/g, ' ');
@@ -111,7 +111,10 @@ async function main() {
     const p = await browser.newPage();
 
     p.on('request', request => {
-      if (request.url().includes('.m3u8')) capturedM3u8 = request.url();
+      const reqUrl = request.url();
+      if (reqUrl.includes('.m3u8')) {
+        capturedM3u8 = reqUrl;
+      }
     });
 
     try {
@@ -130,7 +133,7 @@ async function main() {
         if (match) {
           const pPageUrl = `${PLAYER}/player.php?id=${match[1]}`;
           await p.goto(pPageUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-          await p.waitForTimeout(3000); // Wait for CF
+          await p.waitForTimeout(3000); // Wait for CF check
           const pHtml = await p.content();
           const fMatch = pHtml.match(/fid\s*=\s*["']([^"']+)["']/);
           if (fMatch) playerUrl = `${PLAYER}/uembed.php?v=${fMatch[1]}`;
@@ -141,7 +144,7 @@ async function main() {
         await p.goto(playerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
       }
 
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 12; i++) {
         if (capturedM3u8) break;
         await p.waitForTimeout(1000);
       }
