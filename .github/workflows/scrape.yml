@@ -1,4 +1,4 @@
-name: CricHD Playlist (Edge + rektCaptcha)
+name: CricHD Playlist
 
 on:
   schedule:
@@ -13,31 +13,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Xvfb and Microsoft Edge
+      - name: Install Xvfb and dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb unzip wget
-          
-          # Download Microsoft Edge Stable .deb
-          wget -q https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-stable/microsoft-edge-stable_130.0.2849.46-1_amd64.deb || \
-          wget -q https://packages.microsoft.com/repos/edge/pool/main/m/microsoft-edge-stable/microsoft-edge-stable_129.0.2792.89-1_amd64.deb
-          
-          sudo dpkg -i microsoft-edge-stable*.deb || sudo apt-get install -f -y
-          
-          # Verify Edge installation
-          microsoft-edge --version
 
-      - name: Download rektCaptcha Extension
+      - name: Download Raptor Turnstile Solver
         run: |
-          # CRX Download URL for rektCaptcha (ID: bbdhfoclddncoaomddgkaaphcnddbpdh)
-          wget -O rektcaptcha.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=130.0&acceptformat=crx2,crx3&x=id%3Dbbdhfoclddncoaomddgkaaphcnddbpdh%26uc"
-          unzip -o rektcaptcha.crx -d rektcaptcha || true
-          
-          if [ ! -f "rektcaptcha/manifest.json" ]; then
-            echo "ERROR: rektCaptcha extraction failed."
+          # Raptor Turnstile Solver extension ID (from your previous code)
+          # You need to find the correct CRX URL for this extension
+          # For now, using the one from your earlier working attempt
+          wget -O turnstile.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=130.0&acceptformat=crx2,crx3&x=id%3Dijmhjekchmipnifjiahkapifokdffffo%26uc"
+          unzip -o turnstile.crx -d turnstile-solver || true
+          if [ ! -f "turnstile-solver/manifest.json" ]; then
+            echo "ERROR: Turnstile solver extraction failed."
             exit 1
           fi
-          echo "rektCaptcha extracted successfully."
+          echo "Turnstile solver extracted."
 
       - uses: actions/setup-node@v4
         with:
@@ -47,7 +39,7 @@ jobs:
         run: |
           npm install
           npx playwright install --with-deps chromium
-          # We don't install msedge via playwright since we installed it manually above
+          npx playwright install chromium
 
       - name: Run scraper
         run: |
