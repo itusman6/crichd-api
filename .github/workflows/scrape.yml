@@ -1,4 +1,4 @@
-name: CricHD Playlist
+name: CricHD Playlist and Schedules
 
 on:
   schedule:
@@ -13,10 +13,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Xvfb and system dependencies
+      - name: Install Xvfb, Chrome, and Windscribe VPN
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb
+          sudo apt-get install -y xvfb google-chrome-stable wget
+          wget -O windscribe-cli.deb https://windscribe.com/install/linux/deb_amd64
+          sudo dpkg -i windscribe-cli.deb || sudo apt-get install -f -y
+          
+          # Windscribe login using GitHub Secrets (Create a free account on windscribe.com)
+          windscribe login <<EOF
+          ${{ secrets.WINDSCRIBE_USERNAME }}
+          ${{ secrets.WINDSCRIBE_PASSWORD }}
+          EOF
+          
+          # Connect to VPN
+          windscribe connect
+          
+          # Verify IP changed to VPN IP
+          curl -s https://httpbin.org/ip
 
       - uses: actions/setup-node@v4
         with:
@@ -29,16 +43,23 @@ jobs:
           npx playwright install chromium
 
       - name: Run scraper
-        env:
-          RESIDENTIAL_PROXY: ${{ secrets.RESIDENTIAL_PROXY_URL }}
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
             node scrape.js
             
           echo "--- Playlist Preview ---"
           head -n 10 playlist.m3u || true
+          echo "--- Schedule Preview ---"
+          head -n 15 schedule.json || true
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Playlist Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: playlist
+          name: crichd-playlist
           path: playlist.m3u
+
+      - name: Upload Schedule Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crichd-schedule
+          path: schedule.json
