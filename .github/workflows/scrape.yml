@@ -1,4 +1,4 @@
-name: CricHD Playlist
+name: CricHD Playlist and Schedules
 
 on:
   schedule:
@@ -20,9 +20,18 @@ jobs:
 
       - name: Download Turnstile Solver Extension
         run: |
-          # Download the extension from Chrome Web Store (using a crx downloader)
+          # Download the extension
           wget -O extension.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=120.0&acceptformat=crx2,crx3&x=id%3Dijmhjekchmipnifjiahkapifokdffffo%26uc"
-          unzip extension.crx -d turnstile-solver
+          
+          # Extract, ignoring the crx header warning
+          unzip -o extension.crx -d turnstile-solver || true
+          
+          # Verify extraction
+          if [ ! -f "turnstile-solver/manifest.json" ]; then
+            echo "ERROR: manifest.json not found. Extraction failed."
+            exit 1
+          fi
+          echo "Extension extracted successfully."
 
       - uses: actions/setup-node@v4
         with:
@@ -32,6 +41,7 @@ jobs:
         run: |
           npm install
           npx playwright install --with-deps chromium
+          npx playwright install chromium
 
       - name: Run scraper
         run: |
@@ -40,14 +50,16 @@ jobs:
             
           echo "--- Playlist Preview ---"
           head -n 10 playlist.m3u || true
+          echo "--- Schedule Preview ---"
+          head -n 15 schedule.json || true
 
-      - name: Upload Playlist
+      - name: Upload Playlist Artifact
         uses: actions/upload-artifact@v4
         with:
           name: crichd-playlist
           path: playlist.m3u
 
-      - name: Upload Schedule
+      - name: Upload Schedule Artifact
         uses: actions/upload-artifact@v4
         with:
           name: crichd-schedule
