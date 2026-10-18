@@ -8,13 +8,18 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Xvfb and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
 
       - uses: actions/setup-node@v4
         with:
@@ -23,10 +28,13 @@ jobs:
       - name: Install dependencies
         run: |
           npm install
+          npx playwright install --with-deps chromium
+          npx playwright install chromium
 
       - name: Run scraper
         run: |
-          node scrape.js
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            node scrape.js
 
       - name: Commit and Push Playlist
         run: |
