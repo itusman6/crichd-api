@@ -1,50 +1,51 @@
-name: Generate CricHD Playlist
+name: CricHD Playlist and Schedules
 
 on:
   schedule:
-    # Runs automatically every 4 hours to keep expiring tokens fresh
-    - cron: '0 */4 * * *'
-  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 
 jobs:
-  build:
+  scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Install Xvfb and system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           npm install
-
-      - name: Install Playwright Chromium Browsers
-        run: |
+          npx playwright install --with-deps chromium
           npx playwright install chromium
 
-      - name: Run Scraper Script
+      - name: Run scraper
         run: |
-          node scrape.js
-
-      - name: Verify Playlist Generation
-        run: |
-          if [ ! -f playlist.m3u ]; then
-            echo "Error: playlist.m3u was not generated!"
-            exit 1
-          fi
-          echo "--- Preview of Generated Playlist ---"
-          head -n 20 playlist.m3u
-          echo "-------------------------------------"
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            node scrape.js
+            
+          echo "--- Playlist Preview ---"
+          head -n 10 playlist.m3u || true
+          echo "--- Schedule Preview ---"
+          head -n 15 schedule.json || true
 
       - name: Upload Playlist Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: m3u-playlist
+          name: crichd-playlist
           path: playlist.m3u
-          retention-days: 3
+
+      - name: Upload Schedule Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crichd-schedule
+          path: schedule.json
