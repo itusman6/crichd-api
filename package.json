@@ -1,9 +1,9 @@
 {
   "name": "crichd-scraper-fast",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "type": "module",
   "dependencies": {
-    "cheerio": "^1.0.0",
-    "rebrowser-playwright": "^1.50.0"
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0"
   }
 }
