@@ -20,16 +20,12 @@ jobs:
 
       - name: Download Raptor Turnstile Solver
         run: |
-          # Raptor Turnstile Solver extension ID (from your previous code)
-          # You need to find the correct CRX URL for this extension
-          # For now, using the one from your earlier working attempt
           wget -O turnstile.crx "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=130.0&acceptformat=crx2,crx3&x=id%3Dijmhjekchmipnifjiahkapifokdffffo%26uc"
           unzip -o turnstile.crx -d turnstile-solver || true
           if [ ! -f "turnstile-solver/manifest.json" ]; then
             echo "ERROR: Turnstile solver extraction failed."
             exit 1
           fi
-          echo "Turnstile solver extracted."
 
       - uses: actions/setup-node@v4
         with:
@@ -46,12 +42,15 @@ jobs:
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
             node scrape.js
 
+      - name: Commit and Push Playlist
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add playlist.m3u
+          git commit -m "Update playlist.m3u [skip ci]" || echo "No changes to commit"
+          git push
+
       - uses: actions/upload-artifact@v4
         with:
           name: playlist
           path: playlist.m3u
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: schedule
-          path: schedule.json
