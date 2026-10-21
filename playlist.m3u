@@ -1,117 +1,117 @@
 #EXTM3U
-# Generated: 2026-10-21T04:13:32.384Z
+# Generated: 2026-10-21T11:37:20.593Z
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/willow.webp" group-title="24/7 Channels",Willow Cricket
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/willow2c.m3u8?md5=m9S1uSkSlpJlaYksr6dZUg&expires=1792560388&ch=willow2c&s=6c607bbc76394e762dd0947d4806c7ee
+https://mz01.bhalocast.com:7060/hls/willow2c.m3u8?md5=MnkMDYXj-_sTwX5X13UiZQ&expires=1792587017&ch=willow2c&s=90b3ff2575a077895d0d4cb0bbceea4d
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/willowextra.webp" group-title="24/7 Channels",Willow 2
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz01.bhalocast.com:7060/hls/wextres5.m3u8?md5=BPoJGrwCu5b1z7hPLxc-AA&expires=1792560404&ch=wextres5&s=e92ec042a57b055162aa173e6e4d0ad0
+https://mz01.bhalocast.com:7060/hls/wextres5.m3u8?md5=OK0Ju08Zd_17gUxUcyMsSA&expires=1792587032&ch=wextres5&s=29b8776d70a2ca94eccff8f003cbd9da
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/star1.webp" group-title="24/7 Channels",Star Sports 1
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/star1kibich5.m3u8?md5=skm1S0gR52kqWUKVjzOlIg&expires=1792560423&ch=star1kibich5&s=1be2ed1bb2088fcb1e845817f5f98334
+https://mz02.bhalocast.com:7060/hls/star1kibich5.m3u8?md5=ikUE9K334G4Bh5g-EXR7dQ&expires=1792587051&ch=star1kibich5&s=45fe95e3ce18881834dbb3b12a9aa762
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/starhindi.webp" group-title="24/7 Channels",Star Sports 1 Hindi
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/star4b.m3u8?md5=aRITLrXmwpLdYQvyU7Xyyg&expires=1792560442&ch=star4b&s=8484b0916dbf7d083a8866c8e0efe572
+https://mz01.bhalocast.com:7060/hls/star4b.m3u8?md5=vYOnZXNxbym1Owtsv8vd5g&expires=1792587070&ch=star4b&s=2611b8b21881cf0218b40525f891e389
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/star2.webp" group-title="24/7 Channels",Star Sports 2
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz01.bhalocast.com:7060/hls/star2u.m3u8?md5=j4rqCWIl9ou2RRSfM5XT1w&expires=1792560460&ch=star2u&s=57da32089fd8d2dd6f9df6747f8a2584
+https://mz02.bhalocast.com:7060/hls/star2u.m3u8?md5=4fTbSYWUoppa6GziUrfzMQ&expires=1792587089&ch=star2u&s=20de114a57edb813c825f147b1f6bbbb
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/ptv.webp" group-title="24/7 Channels",PTV Sports
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz01.bhalocast.com:7060/hls/ptvskpr.m3u8?md5=1UhNYRhA6YG8LSeBthHpBg&expires=1792560479&ch=ptvskpr&s=a16235edeb42826af0f759160ff33ba1
+https://mz01.bhalocast.com:7060/hls/ptvskpr.m3u8?md5=9yajBxuX38L8hBJpiNekzg&expires=1792587107&ch=ptvskpr&s=8b2fa5b685f6aa88f8e476d913ca8d52
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/asports.webp" group-title="24/7 Channels",A Sports
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz01.bhalocast.com:7060/hls/asports3c.m3u8?md5=XiHOcY3mVCvTQsHJw9GzkA&expires=1792560498&ch=asports3c&s=02a1912ef6d9174046d543e828949801
+https://mz01.bhalocast.com:7060/hls/asports3c.m3u8?md5=TtnLhoyn51h2CWv4Ggskww&expires=1792587126&ch=asports3c&s=2a155bf5364a891356815cb98c358590
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/tensp.webp" group-title="24/7 Channels",Ten Sports
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/tenspk.m3u8?md5=x-71GzoNWCpny8CEGuJmsQ&expires=1792560517&ch=tenspk&s=497681174bfe1651251f652b4a8fe3d1
+https://mz02.bhalocast.com:7060/hls/tenspk.m3u8?md5=jpAeVyiLqa4Ff5gBJoQEBw&expires=1792587145&ch=tenspk&s=ba7363040371f281cbebcf8edc6a0eef
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/geosp.webp" group-title="24/7 Channels",Geo Super
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/geosp.m3u8?md5=VQ8EeTSB42dvR6Eq_VK2ng&expires=1792560535&ch=geosp&s=e473b71bbb5ef17dbd22b2fa8e043015
+https://mz01.bhalocast.com:7060/hls/geosp.m3u8?md5=Fx_nDxZ2y-x2Lo0zdMZxSg&expires=1792587163&ch=geosp&s=542a9695279d49a09aeb2e8cba88e39d
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/tsports.webp" group-title="24/7 Channels",T Sports HD
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/gtvbd.m3u8?md5=JF63FXqc3UI4D1Gxncyp7Q&expires=1792560554&ch=gtvbd&s=269f55c911447d3f3503f3cb8b3eaaac
+https://mz01.bhalocast.com:7060/hls/gtvbd.m3u8?md5=kAWvlOxpzILqs6XaWcWVAA&expires=1792587182&ch=gtvbd&s=ae222b2276eaf286d2e8e009d216fd60
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/foxcric.webp" group-title="24/7 Channels",Fox Sports Cricket
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/fox501a.m3u8?md5=8pxwsClX7yf_DHsAb7tp0A&expires=1792560573&ch=fox501a&s=57c8339dd34ef2bf10d86b03a6c2f521
+https://mz02.bhalocast.com:7060/hls/fox501a.m3u8?md5=IorcZbULCjxhpM2mliQ8_w&expires=1792587201&ch=fox501a&s=d1bc717fc3af3af9448eec23395c1f4a
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/astrocric.webp" group-title="24/7 Channels",Astro Cricket
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz01.bhalocast.com:7060/hls/astro2v.m3u8?md5=b4YoPwVfsth82mOC497GPg&expires=1792560591&ch=astro2v&s=c1e6ddccbe9d8e8ae1f1943b278a6dcd
+https://mz02.bhalocast.com:7060/hls/astro2v.m3u8?md5=2pqNGpS3lPSbt5O-YEl9WA&expires=1792587220&ch=astro2v&s=b53627656edf111921badff56f6cb5f2
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/ten5.webp" group-title="24/7 Channels",Sony Sports Ten 5
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/sony5c.m3u8?md5=V7PotrGmpXRAi-qvoLjuWA&expires=1792560610&ch=sony5c&s=a4c3ec5dcc2641cbaf99339f88fb6dcf
+https://mz01.bhalocast.com:7060/hls/sony5c.m3u8?md5=yYXOxbVkSozLyQ_BwkxuVQ&expires=1792587238&ch=sony5c&s=a9ae7b2208d9cc5ac1402af1a02bd93e
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/ten1.webp" group-title="24/7 Channels",Sony Sports Ten 1
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/sony1c.m3u8?md5=CRpGVb85mSgVjbIsjmJ4xg&expires=1792560629&ch=sony1c&s=36b85360523dc5cc149d390a0f9ab8cf
+https://mz01.bhalocast.com:7060/hls/sony1c.m3u8?md5=3_lIXZBdkWHZzlPhpVr3fw&expires=1792587257&ch=sony1c&s=c20bb81c123c90d8b2dfebfbb9d2d659
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/ten2.webp" group-title="24/7 Channels",Sony Sports Ten 2
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/ten2endia.m3u8?md5=k_MFczk_GYap09lGuDcwWw&expires=1792560648&ch=ten2endia&s=0b3298e95a2095eff5ff832ead680f84
+https://mz01.bhalocast.com:7060/hls/ten2endia.m3u8?md5=W0c6WMNk5RKUQqtsUVnkOg&expires=1792587276&ch=ten2endia&s=b211048aa092c0c468899ace3f87f98a
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/ten3.webp" group-title="24/7 Channels",Sony Sports Ten 3
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/sony3c.m3u8?md5=vylwuZZ_R6NTTWFh-Jfnvw&expires=1792560667&ch=sony3c&s=3507954915c043c1eafa3357c8903d72
+https://mz01.bhalocast.com:7060/hls/sony3c.m3u8?md5=5MSdm_U2B-fth9S-vaqa-g&expires=1792587295&ch=sony3c&s=af95e33d2873525de4d66fe870e7b9fd
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/cl1.webp" group-title="24/7 Channels",Criclife 1
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/criclife1.m3u8?md5=hF2Gu_vLAMTQR4LX5Sy6ZQ&expires=1792560763&ch=criclife1&s=387ce520a4cdd9f107b0ba2f6b6cda35
+https://mz02.bhalocast.com:7060/hls/criclife1.m3u8?md5=0AiVirRXX2dXrd0Vi7LySA&expires=1792587391&ch=criclife1&s=fec98d4e5dc4e70e57c89d0c7ba89b65
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/cl2.webp" group-title="24/7 Channels",Criclife 2
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz01.bhalocast.com:7060/hls/criclife2.m3u8?md5=KAUP4z54sWI8I6Fwo1-inw&expires=1792560782&ch=criclife2&s=065ba2847429470480c4d2d98ab2ed3a
+https://mz01.bhalocast.com:7060/hls/criclife2.m3u8?md5=fq2JdrbaO3BH6QLL3oNtIw&expires=1792587410&ch=criclife2&s=80248f301a03c6d7815c2bb0bedb1e5a
 
 #EXTINF:-1 tvg-logo="https://crichd.mobile/assets/channels/cl3.webp" group-title="24/7 Channels",Criclife 3
 #EXTVLCOPT:http-origin=https://playsza.st
 #EXTVLCOPT:http-referrer=https://playsza.st/
 #EXTVLCOPT:http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
-https://mz02.bhalocast.com:7060/hls/criclife3.m3u8?md5=GOy_d33VlRW-sOETM7q5_w&expires=1792560800&ch=criclife3&s=1ed5652108edc403858beae98eb09a83
+https://mz02.bhalocast.com:7060/hls/criclife3.m3u8?md5=s08C8tNV2M07EhjCOsnzlg&expires=1792587428&ch=criclife3&s=02ccdc66904622cf83c2e041f14cfe76
 
